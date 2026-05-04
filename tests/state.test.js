@@ -119,17 +119,17 @@ describe('edge cases', () => {
     expect(groups[0].blocks).toHaveLength(2);
   });
 
-  it('computeProgress with unknown statuses tracks them in by_status but does NOT subtract from reviewed (pinning current behavior)', () => {
-    // The reviewed calculation only subtracts pending+proposed+error. An unknown
-    // status like "foo" gets counted toward reviewed even though it's not
-    // really reviewed — this pins current behavior.
+  it('computeProgress treats unknown statuses as NOT reviewed', () => {
+    // Reviewed counts only the explicit REVIEWED set (accepted/edited/skipped/deleted).
+    // An unknown status like "foo" is tracked in by_status but does NOT count
+    // toward reviewed — defensive against typos/new statuses leaking through.
     const blocks = [{ status: 'foo' }, { status: 'accepted' }];
     const progress = computeProgress(blocks);
     expect(progress.total).toBe(2);
     expect(progress.by_status['foo']).toBe(1);
     expect(progress.by_status.accepted).toBe(1);
-    // total(2) - pending(0) - proposed(0) - error(0) = 2; "foo" counted as reviewed.
-    expect(progress.reviewed).toBe(2);
+    // Only 'accepted' is explicitly reviewed; 'foo' is unknown and excluded.
+    expect(progress.reviewed).toBe(1);
   });
 
   it('applyAction returns a new object and does not mutate the input', () => {

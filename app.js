@@ -1,5 +1,5 @@
 import { createAPIClient } from './lib/api.js';
-import { groupByStory, computeProgress, applyAction, getNextPendingStory } from './lib/state.js';
+import { groupByStory, computeProgress, applyAction, getNextPendingStory, NOT_REVIEWED } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
 import { nextFocusable, prevFocusable } from './lib/focus.js';
 
@@ -196,7 +196,7 @@ window.appRoot = function () {
 
     /** True when story-screen has at least one pending block. */
     storyHasPendingBlocks() {
-      return this.currentStoryBlocks.some(b => ['proposed', 'pending', 'error'].includes(b.status));
+      return this.currentStoryBlocks.some(b => NOT_REVIEWED.has(b.status));
     },
 
     /** Is *some* block-level modal (skip/delete) currently open? */
@@ -299,8 +299,7 @@ window.appRoot = function () {
     _handleStoryKey(event) {
       const key = event.key;
       const focused = this.focusedBlock;
-      const focusable = focused
-        && (focused.status === 'proposed' || focused.status === 'pending' || focused.status === 'error');
+      const focusable = focused && NOT_REVIEWED.has(focused.status);
 
       if (key === 'j' || key === 'ArrowDown') {
         this.focusNextBlock();
@@ -317,7 +316,7 @@ window.appRoot = function () {
               const list = this.currentStoryBlocks;
               const startIdx = list.findIndex(b => b.row_id === acceptedId);
               for (let i = startIdx + 1; i < list.length; i++) {
-                if (['proposed', 'pending', 'error'].includes(list[i].status)) {
+                if (NOT_REVIEWED.has(list[i].status)) {
                   this._moveFocus(list[i].row_id, 'block');
                   return;
                 }
@@ -412,7 +411,7 @@ window.storyScreen = function () {
     hasPendingBlocks() {
       const g = this.group;
       if (!g) return false;
-      return g.blocks.some(b => ['proposed', 'pending', 'error'].includes(b.status));
+      return g.blocks.some(b => NOT_REVIEWED.has(b.status));
     },
   };
 };
