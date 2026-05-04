@@ -1,5 +1,5 @@
 import { createAPIClient } from './lib/api.js';
-import { groupByStory, computeProgress, applyAction, getNextPendingStory, NOT_REVIEWED } from './lib/state.js';
+import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, NOT_REVIEWED } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
 import { nextFocusable, prevFocusable } from './lib/focus.js';
 
@@ -307,6 +307,14 @@ window.appRoot = function () {
       } else if (key === 'k' || key === 'ArrowUp') {
         this.focusPrevBlock();
         event.preventDefault();
+      } else if (key === 'A') {
+        // Shift+A — bulk-accept all remaining pending blocks in this story.
+        // The storyScreen component listens for this event; broadcasting via
+        // CustomEvent keeps appRoot decoupled from storyScreen internals.
+        if (this.storyHasPendingBlocks()) {
+          window.dispatchEvent(new CustomEvent('story-bulk-accept'));
+          event.preventDefault();
+        }
       } else if (key === 'a' || key === ' ') {
         if (focused && focusable) {
           const acceptedId = focused.row_id;
@@ -404,14 +412,61 @@ window.overviewScreen = function () {
 };
 window.storyScreen = function () {
   return {
-    init() {},
+    bulkAccepting: false,
+
+    init() {
+      // Listen for the global keyboard shortcut (Shift+A) so the same logic
+      // runs whether the user clicks the button or presses the key.
+      window.addEventListener('story-bulk-accept', () => {
+        if (!this.bulkAccepting && this.hasPendingBlocks()) {
+          this.bulkAcceptRemaining();
+        }
+      });
+    },
+
     get group() {
       return this.$root.groups.find(g => g.story_id === this.$root.currentStoryId) || null;
     },
+
     hasPendingBlocks() {
-      const g = this.group;
-      if (!g) return false;
-      return g.blocks.some(b => NOT_REVIEWED.has(b.status));
+      return getPendingBlocksInStory(this.group).length > 0;
+    },
+
+    pendingBlockCount() {
+      return getPendingBlocksInStory(this.group).length;
+    },
+
+    /**
+     * Sequentially accept every still-pending block in the current story.
+     * Sequential — not parallel — so each optimistic state update applied by
+     * submitAction flows correctly into the next iteration. Stops at the
+     * first error (no retry, no skip-and-continue) so the editor can manually
+     * inspect the failed row.
+     */
+    async bulkAcceptRemaining() {
+      if (this.bulkAccepting) return;
+      // Snapshot the row_ids up front so we don't iterate over a mutating
+      // group.blocks list while submitAction reassigns this.$root.groups.
+      const pendingRowIds = getPendingBlocksInStory(this.group).map(b => b.row_id);
+      if (pendingRowIds.length === 0) return;
+
+      this.bulkAccepting = true;
+      try {
+        for (const rowId of pendingRowIds) {
+          try {
+            await this.$root.submitAction({ row_id: rowId, action: 'accept' });
+          } catch (e) {
+            this.$root.globalError = `Bulk accept stopped at row ${rowId}: ${e.message || e}`;
+            return;
+          }
+        }
+        // All pending blocks resolved — auto-advance to the next story.
+        if (!this.hasPendingBlocks()) {
+          this.$root.advanceToNextStory();
+        }
+      } finally {
+        this.bulkAccepting = false;
+      }
     },
   };
 };

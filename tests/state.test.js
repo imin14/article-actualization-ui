@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupByStory, computeProgress, applyAction, getNextPendingStory } from '../lib/state.js';
+import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory } from '../lib/state.js';
 import { MOCK_CAMPAIGN } from '../lib/mock-data.js';
 
 describe('groupByStory', () => {
@@ -104,6 +104,44 @@ describe('getNextPendingStory', () => {
       { story_id: 'b', blocks: [{ status: 'proposed' }] },
     ];
     expect(getNextPendingStory(groups, null)).toBe('b');
+  });
+});
+
+describe('getPendingBlocksInStory', () => {
+  it('returns only blocks whose status is in NOT_REVIEWED (pending/proposed/error)', () => {
+    const group = {
+      story_id: 's1',
+      blocks: [
+        { row_id: 'r1', status: 'accepted' },
+        { row_id: 'r2', status: 'proposed' },
+        { row_id: 'r3', status: 'pending' },
+        { row_id: 'r4', status: 'error' },
+        { row_id: 'r5', status: 'edited' },
+        { row_id: 'r6', status: 'skipped' },
+        { row_id: 'r7', status: 'deleted' },
+      ],
+    };
+    const pending = getPendingBlocksInStory(group);
+    expect(pending.map(b => b.row_id)).toEqual(['r2', 'r3', 'r4']);
+  });
+
+  it('returns [] for null/undefined group or missing blocks array', () => {
+    expect(getPendingBlocksInStory(null)).toEqual([]);
+    expect(getPendingBlocksInStory(undefined)).toEqual([]);
+    expect(getPendingBlocksInStory({})).toEqual([]);
+    expect(getPendingBlocksInStory({ blocks: null })).toEqual([]);
+  });
+
+  it('preserves source order of pending blocks', () => {
+    const group = {
+      blocks: [
+        { row_id: 'r1', status: 'proposed' },
+        { row_id: 'r2', status: 'accepted' },
+        { row_id: 'r3', status: 'error' },
+        { row_id: 'r4', status: 'pending' },
+      ],
+    };
+    expect(getPendingBlocksInStory(group).map(b => b.row_id)).toEqual(['r1', 'r3', 'r4']);
   });
 });
 

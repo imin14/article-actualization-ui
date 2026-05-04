@@ -274,12 +274,20 @@
                     </template>
                   </ul>
 
-                  <div class="mt-6 flex justify-between">
+                  <div class="mt-6 flex justify-between items-center gap-2">
                     <button class="px-4 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50"
                             @click="$root.goToOverview()">К списку</button>
-                    <button class="px-4 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
-                            :disabled="hasPendingBlocks()"
-                            @click="$root.advanceToNextStory()">Save & Next Story</button>
+                    <div class="flex gap-2">
+                      <button class="px-4 py-2 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                              :disabled="!hasPendingBlocks() || bulkAccepting"
+                              @click="bulkAcceptRemaining()">
+                        <span x-show="!bulkAccepting">✅ Accept all remaining (<span x-text="pendingBlockCount()"></span>)</span>
+                        <span x-show="bulkAccepting">Accepting...</span>
+                      </button>
+                      <button class="px-4 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
+                              :disabled="hasPendingBlocks()"
+                              @click="$root.advanceToNextStory()">Save & Next Story</button>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -348,6 +356,7 @@
               <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">j / &darr;</td><td class="py-1">Focus next block</td></tr>
               <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">k / &uarr;</td><td class="py-1">Focus previous block</td></tr>
               <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">a / Space</td><td class="py-1">Accept focused block</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">Shift+A</td><td class="py-1">Accept all remaining in this story</td></tr>
               <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">e</td><td class="py-1">Edit &amp; Accept (open inline editor)</td></tr>
               <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">s</td><td class="py-1">Skip focused block</td></tr>
               <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">d</td><td class="py-1">Delete focused block</td></tr>
