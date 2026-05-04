@@ -142,6 +142,20 @@ describe('buildClassificationPrompt', () => {
     }
     expect(threw || (res && res.prompt === '')).toBe(true);
   });
+
+  it('caps prompt size even when an individual hit paragraph is enormous', () => {
+    const huge = 'noise word '.repeat(2000); // ~22000 chars, ~5500 tokens
+    const out = buildClassificationPrompt({
+      keyword: 'noise',
+      contextDescription: 'topic X',
+      hits: [
+        { field: 'textMarkdown', hit_index: 0, hit_paragraph: huge, context: huge },
+      ],
+    });
+    // Even with a giant hit paragraph, the classification prompt must stay
+    // under ~500 tokens — that's the whole point of using the cheap model.
+    expect(approxTokens(out.prompt)).toBeLessThan(500);
+  });
 });
 
 describe('buildRewritePrompt', () => {
