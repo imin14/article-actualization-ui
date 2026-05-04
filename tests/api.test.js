@@ -161,4 +161,15 @@ describe('API client edge cases', () => {
       global.fetch = original;
     }
   });
+
+  it('real client: getCampaignState rejects when response is missing campaign/blocks', async () => {
+    const original = global.fetch;
+    global.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    try {
+      const api = createAPIClient({ mode: 'real', baseURL: 'https://example.com', token: 'x' });
+      await expect(api.getCampaignState('cmp-x')).rejects.toThrow(/Invalid/);
+    } finally {
+      global.fetch = original;
+    }
+  });
 });
