@@ -213,10 +213,15 @@
                           </template>
 
                           <div x-show="skipModal"
+                               role="dialog"
+                               aria-modal="true"
+                               :aria-labelledby="'skip-modal-title-' + block.row_id"
+                               x-effect="if (skipModal) { $nextTick(() => { const root = document.querySelector('[data-row-id=&quot;' + block.row_id + '&quot;]'); const el = root && root.querySelector('[role=dialog] input, [role=dialog] button, [role=dialog] textarea'); if (el && el.focus) el.focus(); }); }"
                                class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
                                @click.self="closeSkipModal()">
                             <div class="bg-white rounded shadow-lg max-w-md w-full p-5">
-                              <h3 class="font-semibold mb-3">Skip block: причина</h3>
+                              <h3 class="font-semibold mb-3"
+                                  :id="'skip-modal-title-' + block.row_id">Skip block: причина</h3>
 
                               <div class="space-y-2 text-sm">
                                 <template x-for="opt in skipReasonOptions" :key="opt.value">
@@ -242,10 +247,15 @@
                           </div>
 
                           <div x-show="deleteModal"
+                               role="dialog"
+                               aria-modal="true"
+                               :aria-labelledby="'delete-modal-title-' + block.row_id"
+                               x-effect="if (deleteModal) { $nextTick(() => { const root = document.querySelector('[data-row-id=&quot;' + block.row_id + '&quot;]'); const el = root && root.querySelector('[role=dialog] button'); if (el && el.focus) el.focus(); }); }"
                                class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
                                @click.self="closeDeleteConfirm()">
                             <div class="bg-white rounded shadow-lg max-w-md w-full p-5">
-                              <h3 class="font-semibold mb-2">Удалить блок?</h3>
+                              <h3 class="font-semibold mb-2"
+                                  :id="'delete-modal-title-' + block.row_id">Удалить блок?</h3>
                               <p class="text-sm text-slate-700 mb-4">
                                 Этот блок будет удалён из story в Storyblok (как draft).
                                 Действие отменяемо вручную в Storyblok admin.
@@ -317,11 +327,15 @@
 
     <!-- Keyboard shortcuts help overlay -->
     <div x-show="helpOpen"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="help-modal-title"
+         x-effect="if (helpOpen) { $nextTick(() => { const el = document.querySelector('[aria-labelledby=&quot;help-modal-title&quot;] button'); if (el && el.focus) el.focus(); }); }"
          class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
          @click.self="helpOpen = false">
       <div class="bg-white rounded shadow-lg max-w-lg w-full p-5">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold">Keyboard shortcuts</h3>
+          <h3 id="help-modal-title" class="font-semibold">Keyboard shortcuts</h3>
           <button type="button"
                   class="text-slate-400 hover:text-slate-700 text-xl leading-none"
                   @click="helpOpen = false">&times;</button>
@@ -369,6 +383,8 @@
     </div>
 
     <div x-show="globalError"
+         role="status"
+         aria-live="polite"
          class="fixed bottom-4 right-4 max-w-sm bg-red-600 text-white text-sm rounded shadow-lg px-4 py-3 cursor-pointer z-50"
          @click="globalError = null">
       <div class="font-semibold mb-1">Ошибка</div>
