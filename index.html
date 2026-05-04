@@ -261,9 +261,38 @@
           </template>
 
           <template x-if="screen === 'done'">
-            <div>
-              <!-- filled in Task 15 -->
-              <div class="text-slate-500">Done screen — placeholder</div>
+            <div class="bg-white border border-slate-200 rounded p-6 text-center">
+              <div class="text-3xl mb-2">🎉</div>
+              <h1 class="text-xl font-semibold mb-2">Campaign reviewed</h1>
+              <p class="text-sm text-slate-600 mb-4">
+                Все блоки кампании рассмотрены. Drafts записаны в Storyblok.
+                Ниже — итоги. Опубликовать драфты вручную в Storyblok admin, потом запустить
+                cascade-translation workflow в n8n.
+              </p>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl mx-auto mb-6">
+                <div class="bg-emerald-50 rounded p-3">
+                  <div class="text-2xl font-semibold text-emerald-700"
+                       x-text="(state.progress.by_status.accepted || 0) + (state.progress.by_status.edited || 0)"></div>
+                  <div class="text-xs text-emerald-700">accepted / edited</div>
+                </div>
+                <div class="bg-slate-100 rounded p-3">
+                  <div class="text-2xl font-semibold text-slate-700"
+                       x-text="state.progress.by_status.skipped || 0"></div>
+                  <div class="text-xs text-slate-700">skipped</div>
+                </div>
+                <div class="bg-red-50 rounded p-3">
+                  <div class="text-2xl font-semibold text-red-700"
+                       x-text="state.progress.by_status.deleted || 0"></div>
+                  <div class="text-xs text-red-700">deleted</div>
+                </div>
+                <div class="bg-amber-50 rounded p-3">
+                  <div class="text-2xl font-semibold text-amber-700"
+                       x-text="state.progress.by_status.error || 0"></div>
+                  <div class="text-xs text-amber-700">errors</div>
+                </div>
+              </div>
+              <button class="px-4 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50"
+                      @click="goToOverview()">К списку stories</button>
             </div>
           </template>
         </main>
