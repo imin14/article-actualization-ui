@@ -1,0 +1,14 @@
+{
+  "name": "article-actualization-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}
