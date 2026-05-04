@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mass Actualization</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
+  <link rel="stylesheet" href="styles.css">
+
+  <script type="importmap">
+    {
+      "imports": {
+        "diff": "https://cdn.jsdelivr.net/npm/diff@7.0.0/+esm"
+      }
+    }
+  </script>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+  <div id="app" x-data="appRoot()" x-init="init()" x-cloak>
+
+    <!-- Loading state -->
+    <template x-if="loading">
+      <div class="flex items-center justify-center min-h-screen">
+        <div class="text-slate-500">Загружаем кампанию...</div>
+      </div>
+    </template>
+
+    <!-- Error state -->
+    <template x-if="error">
+      <div class="flex items-center justify-center min-h-screen p-8">
+        <div class="max-w-lg bg-red-50 border border-red-200 rounded p-4">
+          <div class="font-semibold text-red-800">Ошибка</div>
+          <div class="text-sm text-red-700 mt-1" x-text="error"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Routed content -->
+    <template x-if="!loading && !error">
+      <div>
+        <header class="bg-white border-b border-slate-200">
+          <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div>
+              <div class="text-sm text-slate-500">Campaign</div>
+              <div class="font-semibold" x-text="state.campaign.topic"></div>
+            </div>
+            <div class="text-sm text-slate-600">
+              <span x-text="state.progress.reviewed"></span> /
+              <span x-text="state.progress.total"></span> reviewed
+            </div>
+          </div>
+          <div class="h-1 bg-slate-200">
+            <div class="h-full bg-emerald-500 transition-all"
+                 :style="`width: ${(state.progress.reviewed / Math.max(1, state.progress.total)) * 100}%`"></div>
+          </div>
+        </header>
+
+        <main class="max-w-5xl mx-auto px-4 py-6">
+          <template x-if="screen === 'overview'">
+            <div x-data="overviewScreen()" x-init="init()">
+              <!-- filled in Task 7 -->
+              <div class="text-slate-500">Overview screen — placeholder</div>
+            </div>
+          </template>
+
+          <template x-if="screen === 'story'">
+            <div x-data="storyScreen()" x-init="init($el)">
+              <!-- filled in Task 8 -->
+              <div class="text-slate-500">Story screen — placeholder for story id <span x-text="currentStoryId"></span></div>
+            </div>
+          </template>
+
+          <template x-if="screen === 'done'">
+            <div>
+              <!-- filled in Task 15 -->
+              <div class="text-slate-500">Done screen — placeholder</div>
+            </div>
+          </template>
+        </main>
+      </div>
+    </template>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+import { createAPIClient } from './lib/api.js';
+import { groupByStory, computeProgress, applyAction, getNextPendingStory } from './lib/state.js';
+import { renderDiffHTML } from './lib/diff.js';
+
+// === Configuration ===
+// To switch to the real backend, change mode to 'real' and supply baseURL + token
+// (or read them from URL query params). For now, we run against the mock client.
+const API_MODE = 'mock';
+const API_BASE_URL = ''; // e.g. 'https://imin-n8n.run.app'
+const API_TOKEN = '';    // bearer token; for production read from URL ?t=
+
+const api = createAPIClient({
+  mode: API_MODE,
+  baseURL: API_BASE_URL,
+  token: API_TOKEN,
+});
+
+const params = new URLSearchParams(window.location.search);
+const CAMPAIGN_ID = params.get('campaign') || 'cmp-portugal-2026-05-04';
+
+window.appRoot = function () {
+  return {
+    loading: true,
+    error: null,
+    state: null,        // CampaignState from API
+    groups: [],         // grouped by story
+    screen: 'overview', // 'overview' | 'story' | 'done'
+    currentStoryId: null,
+
+    async init() {
+      try {
+        await this.refresh();
+      } catch (e) {
+        this.error = String(e.message || e);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async refresh() {
+      const state = await api.getCampaignState(CAMPAIGN_ID);
+      state.progress = computeProgress(state.blocks);
+      this.state = state;
+      this.groups = groupByStory(state.blocks);
+
+      // If finished and no pending stories anywhere, show 'done'.
+      if (this.state.progress.reviewed >= this.state.progress.total) {
+        this.screen = 'done';
+      }
+    },
+
+    goToStory(storyId) {
+      this.currentStoryId = storyId;
+      this.screen = 'story';
+    },
+
+    goToOverview() {
+      this.currentStoryId = null;
+      this.screen = 'overview';
+    },
+
+    async submitAction(payload) {
+      // Optimistic update
+      const idx = this.state.blocks.findIndex(b => b.row_id === payload.row_id);
+      if (idx >= 0) {
+        this.state.blocks[idx] = applyAction(this.state.blocks[idx], payload);
+        this.state.progress = computeProgress(this.state.blocks);
+        this.groups = groupByStory(this.state.blocks);
+      }
+      try {
+        await api.postAction({ ...payload, campaign_id: CAMPAIGN_ID });
+      } catch (e) {
+        // Revert on failure
+        await this.refresh();
+        throw e;
+      }
+    },
+
+    advanceToNextStory() {
+      const next = getNextPendingStory(this.groups, this.currentStoryId);
+      if (next) {
+        this.currentStoryId = next;
+      } else {
+        this.screen = this.state.progress.reviewed >= this.state.progress.total ? 'done' : 'overview';
+      }
+    },
+
+    // helpers exposed to child components via Alpine `$root`
+    diffHTML(a, b) { return renderDiffHTML(a || '', b || ''); },
+  };
+};
+
+// Placeholder child component factories — implemented in subsequent tasks.
+window.overviewScreen = function () {
+  return {
+    init() {},
+  };
+};
+window.storyScreen = function () {
+  return {
+    init() {},
+  };
+};
