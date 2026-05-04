@@ -172,4 +172,30 @@ describe('API client edge cases', () => {
       global.fetch = original;
     }
   });
+
+  it('real client: getCampaignState rejects with timeout error when fetch never resolves', async () => {
+    const original = global.fetch;
+    // Honour the abort signal: reject with AbortError when the controller fires.
+    global.fetch = (_url, opts) => new Promise((_resolve, reject) => {
+      if (opts && opts.signal) {
+        opts.signal.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      }
+      // Otherwise: never resolve.
+    });
+    try {
+      const api = createAPIClient({
+        mode: 'real',
+        baseURL: 'https://example.com',
+        token: 'x',
+        timeoutMs: 100,
+      });
+      await expect(api.getCampaignState('cmp-x')).rejects.toThrow(/timed out/i);
+    } finally {
+      global.fetch = original;
+    }
+  });
 });
