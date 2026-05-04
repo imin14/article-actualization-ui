@@ -62,8 +62,35 @@
         <main class="max-w-5xl mx-auto px-4 py-6">
           <template x-if="screen === 'overview'">
             <div x-data="overviewScreen()" x-init="init()">
-              <!-- filled in Task 7 -->
-              <div class="text-slate-500">Overview screen — placeholder</div>
+              <h1 class="text-xl font-semibold mb-1">Stories</h1>
+              <div class="text-sm text-slate-500 mb-4">
+                <span x-text="$root.groups.length"></span> stories,
+                <span x-text="$root.state.progress.total"></span> blocks
+              </div>
+
+              <ul class="bg-white border border-slate-200 rounded divide-y divide-slate-200">
+                <template x-for="g in $root.groups" :key="g.story_id">
+                  <li class="hover:bg-slate-50 cursor-pointer"
+                      @click="$root.goToStory(g.story_id)">
+                    <div class="px-4 py-3 flex items-center justify-between gap-4">
+                      <div class="min-w-0">
+                        <div class="font-medium truncate" x-text="g.story_name"></div>
+                        <div class="text-xs text-slate-500 mt-0.5">
+                          <span class="uppercase font-mono mr-2" x-text="g.locale"></span>
+                          <span x-text="g.story_full_slug"></span>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <template x-for="badge in storyBadges(g)" :key="badge.label">
+                          <span class="text-xs px-2 py-0.5 rounded"
+                                :class="badge.classes"
+                                x-text="badge.label + ': ' + badge.count"></span>
+                        </template>
+                      </div>
+                    </div>
+                  </li>
+                </template>
+              </ul>
             </div>
           </template>
 
