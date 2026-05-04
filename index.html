@@ -298,6 +298,14 @@
         </main>
       </div>
     </template>
+
+    <div x-show="globalError"
+         class="fixed bottom-4 right-4 max-w-sm bg-red-600 text-white text-sm rounded shadow-lg px-4 py-3 cursor-pointer z-50"
+         @click="globalError = null">
+      <div class="font-semibold mb-1">Ошибка</div>
+      <div x-text="globalError"></div>
+      <div class="text-xs opacity-80 mt-1">click to dismiss</div>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>

@@ -22,6 +22,7 @@ window.appRoot = function () {
   return {
     loading: true,
     error: null,
+    globalError: null,
     state: null,        // CampaignState from API
     groups: [],         // grouped by story
     screen: 'overview', // 'overview' | 'story' | 'done'
@@ -70,7 +71,7 @@ window.appRoot = function () {
       try {
         await api.postAction({ ...payload, campaign_id: CAMPAIGN_ID });
       } catch (e) {
-        // Revert on failure
+        this.globalError = `Действие не сохранилось: ${e.message}. Состояние возвращено.`;
         await this.refresh();
         throw e;
       }
