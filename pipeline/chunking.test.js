@@ -3,7 +3,7 @@ import {
   splitIntoParagraphs,
   findKeywordParagraphs,
   extractContextWindow,
-} from '../lib/chunking.js';
+} from './chunking.js';
 
 describe('splitIntoParagraphs', () => {
   it('splits on blank lines (double newlines)', () => {

@@ -58,17 +58,22 @@ Static SPA hosted on GitHub Pages. Single `index.html`. Stack:
 - **Tailwind 4 browser build** — utility CSS via CDN
 - **Vitest** — unit tests for pure logic in `lib/` (Node-only; no browser tests required)
 
-Pure modules in `lib/` (51 unit tests, 81 total):
+Pure modules in `lib/`:
 - `lib/types.js` — JSDoc type contracts (BlockRow, Campaign, etc.)
 - `lib/state.js` — derivation (groupByStory, computeProgress, applyAction, getNextPendingStory)
 - `lib/diff.js` — word-level HTML diff with XSS-safe escape
 - `lib/api.js` — API client factory: mock + real (fetch-based against n8n)
 - `lib/mock-data.js` — hardcoded sample campaign for development
-- `lib/tokenize.js` — heuristic token counting (chars/4 Latin, /2 Cyrillic) + budget truncation
-- `lib/chunking.js` — paragraph splitting + context window extraction
-- `lib/search-strategy.js` — orchestration: per-block hit detection, classification prompt, rewrite prompt
 
 The frontend is a thin client. All state lives in n8n + the `campaign_blocks` Data Table.
+
+### Pipeline (this repo, runs in n8n)
+
+Modules in `pipeline/` are designed to be pasted into n8n Code nodes (or imported by an n8n function tool once that capability lands). They are NOT loaded by the frontend SPA — they live here only so the same CI tests them as the SPA. Sync to n8n manually for now.
+
+- `pipeline/tokenize.js` — heuristic token counting (chars/4 Latin, /2 Cyrillic) + budget truncation
+- `pipeline/chunking.js` — paragraph splitting + context window extraction
+- `pipeline/search-strategy.js` — orchestration: per-block hit detection, classification prompt, rewrite prompt
 
 ### Backend: n8n Cloud Run workflows
 

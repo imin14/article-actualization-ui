@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { approxTokens, truncateToTokenBudget } from '../lib/tokenize.js';
+import { approxTokens, truncateToTokenBudget } from './tokenize.js';
 
 describe('approxTokens', () => {
   it('returns 0 for empty input', () => {

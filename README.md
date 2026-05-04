@@ -55,6 +55,11 @@ lib/diff.js           — word-level HTML diff with XSS-safe escape
 lib/api.js            — API client factory: mock + real (fetch-based)
 lib/mock-data.js      — hardcoded sample campaign for development
 tests/*.test.js       — Vitest unit tests for lib modules
+pipeline/             — n8n Code-node logic (NOT loaded by the SPA). See pipeline/README.md.
+  tokenize.js          — heuristic token counting + budget truncation
+  chunking.js          — paragraph splitting + context window extraction
+  search-strategy.js   — per-block hit detection + classification/rewrite prompts
+  *.test.js            — Vitest unit tests, run by the same CI
 .github/workflows/pages.yml — GitHub Pages CI
 ```
 

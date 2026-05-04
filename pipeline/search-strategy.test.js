@@ -3,8 +3,8 @@ import {
   findHitsInBlock,
   buildClassificationPrompt,
   buildRewritePrompt,
-} from '../lib/search-strategy.js';
-import { approxTokens } from '../lib/tokenize.js';
+} from './search-strategy.js';
+import { approxTokens } from './tokenize.js';
 
 const sampleBlock = {
   row_id: 'r-001',
