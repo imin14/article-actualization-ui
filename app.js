@@ -201,9 +201,12 @@ window.blockActions = function (block) {
 
     startEdit() {
       this.editedFields = {};
+      const edited = this.block.edited_payload || {};
       const proposed = this.block.proposed_payload || {};
       for (const k of Object.keys(this.block.original_payload || {})) {
-        this.editedFields[k] = proposed[k] != null ? proposed[k] : (this.block.original_payload[k] || '');
+        if (edited[k] != null) this.editedFields[k] = edited[k];
+        else if (proposed[k] != null) this.editedFields[k] = proposed[k];
+        else this.editedFields[k] = this.block.original_payload[k] || '';
       }
       this.editing = true;
       this.error = null;
