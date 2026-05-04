@@ -112,5 +112,44 @@ window.overviewScreen = function () {
 window.storyScreen = function () {
   return {
     init() {},
+    get group() {
+      return this.$root.groups.find(g => g.story_id === this.$root.currentStoryId) || null;
+    },
+    hasPendingBlocks() {
+      const g = this.group;
+      if (!g) return false;
+      return g.blocks.some(b => ['proposed', 'pending', 'error'].includes(b.status));
+    },
+  };
+};
+
+window.blockCard = function (block) {
+  return {
+    block,
+    init(root) {
+      this._root = root;
+    },
+    fieldsToShow(b) {
+      // Show every key that appears in original_payload (proposed should match).
+      return Object.keys(b.original_payload || {});
+    },
+    statusBadgeClasses(status) {
+      switch (status) {
+        case 'proposed': return 'bg-amber-100 text-amber-800';
+        case 'accepted': return 'bg-emerald-100 text-emerald-800';
+        case 'edited':   return 'bg-emerald-100 text-emerald-800';
+        case 'skipped':  return 'bg-slate-200 text-slate-700';
+        case 'deleted':  return 'bg-red-100 text-red-800';
+        case 'error':    return 'bg-red-100 text-red-800';
+        default:         return 'bg-slate-100 text-slate-600';
+      }
+    },
+  };
+};
+
+window.blockActions = function (block) {
+  return {
+    block,
+    // Implementation comes in Task 9-12
   };
 };

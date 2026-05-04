@@ -95,9 +95,72 @@
           </template>
 
           <template x-if="screen === 'story'">
-            <div x-data="storyScreen()" x-init="init($el)">
-              <!-- filled in Task 8 -->
-              <div class="text-slate-500">Story screen — placeholder for story id <span x-text="currentStoryId"></span></div>
+            <div x-data="storyScreen()" x-init="init()">
+              <button class="text-sm text-slate-500 hover:text-slate-900 mb-3"
+                      @click="$root.goToOverview()">← все stories</button>
+
+              <template x-if="!group">
+                <div class="text-slate-500">Загружаем story...</div>
+              </template>
+
+              <template x-if="group">
+                <div>
+                  <div class="mb-4">
+                    <div class="text-xs text-slate-500 uppercase font-mono" x-text="group.locale"></div>
+                    <h1 class="text-xl font-semibold" x-text="group.story_name"></h1>
+                    <div class="text-xs text-slate-500" x-text="group.story_full_slug"></div>
+                  </div>
+
+                  <ul class="space-y-4">
+                    <template x-for="block in group.blocks" :key="block.row_id">
+                      <li class="bg-white border border-slate-200 rounded p-4"
+                          x-data="blockCard(block)" x-init="init($root)">
+                        <div class="flex items-center justify-between mb-2">
+                          <div class="text-sm">
+                            <span class="font-mono text-slate-500" x-text="block.block_component"></span>
+                            <span class="text-slate-400 mx-1">·</span>
+                            <span class="font-mono text-slate-400" x-text="block.block_path"></span>
+                          </div>
+                          <span class="text-xs px-2 py-0.5 rounded"
+                                :class="statusBadgeClasses(block.status)"
+                                x-text="block.status"></span>
+                        </div>
+
+                        <div class="text-xs text-slate-500 italic mb-3" x-text="'LLM: ' + block.llm_match_reason"></div>
+
+                        <!-- Per-field diff cards -->
+                        <div class="space-y-3">
+                          <template x-for="fieldName in fieldsToShow(block)" :key="fieldName">
+                            <div class="border border-slate-100 rounded p-3 bg-slate-50">
+                              <div class="text-xs font-mono text-slate-500 mb-2" x-text="fieldName"></div>
+                              <div class="diff-output text-sm"
+                                   x-html="$root.diffHTML(
+                                     block.original_payload[fieldName],
+                                     (block.edited_payload && block.edited_payload[fieldName] != null
+                                        ? block.edited_payload[fieldName]
+                                        : block.proposed_payload[fieldName])
+                                   )"></div>
+                            </div>
+                          </template>
+                        </div>
+
+                        <!-- Action buttons (filled in Task 9-12) -->
+                        <div class="flex flex-wrap gap-2 mt-4" x-data="blockActions(block)">
+                          <div class="text-xs text-slate-400">[actions placeholder]</div>
+                        </div>
+                      </li>
+                    </template>
+                  </ul>
+
+                  <div class="mt-6 flex justify-between">
+                    <button class="px-4 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50"
+                            @click="$root.goToOverview()">К списку</button>
+                    <button class="px-4 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
+                            :disabled="hasPendingBlocks()"
+                            @click="$root.advanceToNextStory()">Save & Next Story</button>
+                  </div>
+                </div>
+              </template>
             </div>
           </template>
 
