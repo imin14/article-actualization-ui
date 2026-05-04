@@ -150,6 +150,24 @@ window.blockCard = function (block) {
 window.blockActions = function (block) {
   return {
     block,
-    // Implementation comes in Task 9-12
+    busy: false,
+    error: null,
+    init(root) {
+      this._root = root;
+    },
+    async onAccept() {
+      this.busy = true;
+      this.error = null;
+      try {
+        await this._root.submitAction({
+          row_id: this.block.row_id,
+          action: 'accept',
+        });
+      } catch (e) {
+        this.error = String(e.message || e);
+      } finally {
+        this.busy = false;
+      }
+    },
   };
 };
