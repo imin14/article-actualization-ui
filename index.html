@@ -21,7 +21,8 @@
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen">
 
-  <div id="app" x-data="appRoot()" x-init="init()" x-cloak>
+  <div id="app" x-data="appRoot()" x-init="init()" x-cloak
+       @keydown.window="onGlobalKey($event)">
 
     <!-- Loading state -->
     <template x-if="loading">
@@ -72,7 +73,9 @@
               <ul class="bg-white border border-slate-200 rounded divide-y divide-slate-200">
                 <template x-for="g in $root.groups" :key="g.story_id">
                   <li class="hover:bg-slate-50 cursor-pointer"
-                      @click="$root.goToStory(g.story_id)">
+                      :data-story-id="g.story_id"
+                      :class="{ 'ring-2 ring-blue-400 ring-offset-1 relative z-10': $root.focusedStoryId === g.story_id }"
+                      @click="$root.focusedStoryId = g.story_id; $root.goToStory(g.story_id)">
                     <div class="px-4 py-3 flex items-center justify-between gap-4">
                       <div class="min-w-0">
                         <div class="font-medium truncate" x-text="g.story_name"></div>
@@ -108,13 +111,22 @@
                 <div>
                   <div class="mb-4">
                     <div class="text-xs text-slate-500 uppercase font-mono" x-text="group.locale"></div>
-                    <h1 class="text-xl font-semibold" x-text="group.story_name"></h1>
+                    <div class="flex items-center gap-2">
+                      <h1 class="text-xl font-semibold" x-text="group.story_name"></h1>
+                      <button type="button"
+                              class="text-xs text-slate-400 hover:text-slate-700 border border-slate-300 rounded-full w-5 h-5 leading-none flex items-center justify-center"
+                              title="Keyboard shortcuts (?)"
+                              @click="$root.helpOpen = true">?</button>
+                    </div>
                     <div class="text-xs text-slate-500" x-text="group.story_full_slug"></div>
                   </div>
 
                   <ul class="space-y-4">
                     <template x-for="block in group.blocks" :key="block.row_id">
                       <li class="bg-white border border-slate-200 rounded p-4"
+                          :data-row-id="block.row_id"
+                          :class="{ 'ring-2 ring-blue-400 ring-offset-1 relative z-10': $root.focusedRowId === block.row_id }"
+                          @click="$root.focusedRowId = block.row_id"
                           x-data="blockCard(block)" x-init="init($root)">
                         <div class="flex items-center justify-between mb-2">
                           <div class="text-sm">
@@ -149,7 +161,8 @@
 
                         <!-- Action buttons (filled in Task 9-12) -->
                         <div class="flex flex-wrap gap-2 mt-4"
-                             x-data="blockActions(block)" x-init="init($root)">
+                             x-data="blockActions(block)" x-init="init($root)"
+                             @row-action.window="onRowAction($event.detail)">
 
                           <template x-if="block.status === 'proposed' || block.status === 'pending' || block.status === 'error'">
                             <div class="w-full">
@@ -301,6 +314,59 @@
         </main>
       </div>
     </template>
+
+    <!-- Keyboard shortcuts help overlay -->
+    <div x-show="helpOpen"
+         class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+         @click.self="helpOpen = false">
+      <div class="bg-white rounded shadow-lg max-w-lg w-full p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold">Keyboard shortcuts</h3>
+          <button type="button"
+                  class="text-slate-400 hover:text-slate-700 text-xl leading-none"
+                  @click="helpOpen = false">&times;</button>
+        </div>
+
+        <div class="text-sm">
+          <div class="text-xs uppercase font-semibold text-slate-500 mt-1 mb-2">Story review</div>
+          <table class="w-full text-sm">
+            <tbody>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">j / &darr;</td><td class="py-1">Focus next block</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">k / &uarr;</td><td class="py-1">Focus previous block</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">a / Space</td><td class="py-1">Accept focused block</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">e</td><td class="py-1">Edit &amp; Accept (open inline editor)</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">s</td><td class="py-1">Skip focused block</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">d</td><td class="py-1">Delete focused block</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">n</td><td class="py-1">Save &amp; Next Story (when no pending blocks)</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">b</td><td class="py-1">Back to overview</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">Esc</td><td class="py-1">Close modal / cancel edit / unfocus</td></tr>
+            </tbody>
+          </table>
+
+          <div class="text-xs uppercase font-semibold text-slate-500 mt-4 mb-2">Overview</div>
+          <table class="w-full text-sm">
+            <tbody>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">j / &darr;</td><td class="py-1">Focus next story</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">k / &uarr;</td><td class="py-1">Focus previous story</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">Enter / o</td><td class="py-1">Open focused story</td></tr>
+            </tbody>
+          </table>
+
+          <div class="text-xs uppercase font-semibold text-slate-500 mt-4 mb-2">Anywhere</div>
+          <table class="w-full text-sm">
+            <tbody>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">? / /</td><td class="py-1">Toggle this help</td></tr>
+              <tr><td class="py-1 pr-3 font-mono text-slate-600 align-top whitespace-nowrap">Esc</td><td class="py-1">Close help overlay</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="flex justify-end mt-4">
+          <button class="px-3 py-1.5 text-sm rounded border border-slate-300 hover:bg-slate-50"
+                  @click="helpOpen = false">Close</button>
+        </div>
+      </div>
+    </div>
 
     <div x-show="globalError"
          class="fixed bottom-4 right-4 max-w-sm bg-red-600 text-white text-sm rounded shadow-lg px-4 py-3 cursor-pointer z-50"

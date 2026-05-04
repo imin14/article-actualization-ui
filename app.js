@@ -1,6 +1,7 @@
 import { createAPIClient } from './lib/api.js';
 import { groupByStory, computeProgress, applyAction, getNextPendingStory } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
+import { nextFocusable, prevFocusable } from './lib/focus.js';
 
 // === Configuration ===
 // API config is read from URL query params:
@@ -31,6 +32,16 @@ window.appRoot = function () {
     groups: [],         // grouped by story
     screen: 'overview', // 'overview' | 'story' | 'done'
     currentStoryId: null,
+
+    // Keyboard shortcut state
+    focusedRowId: null,    // currently focused block on story screen
+    focusedStoryId: null,  // currently focused story on overview screen
+    helpOpen: false,
+    // Tracks per-block UI state so the global keydown handler knows whether
+    // to intercept non-Escape keys. blockActions reports into these via
+    // notifyBlockUi(). Sets are keyed by row_id.
+    _blocksWithOpenModal: new Set(),
+    _blocksEditing: new Set(),
 
     async init() {
       try {
@@ -103,6 +114,273 @@ window.appRoot = function () {
 
     // helpers exposed to child components via Alpine `$root`
     diffHTML(a, b) { return renderDiffHTML(a || '', b || ''); },
+
+    // ---- keyboard / focus plumbing ----
+
+    /** Called by blockActions to keep appRoot informed of per-block UI state. */
+    notifyBlockUi(rowId, kind, open) {
+      const set = kind === 'modal' ? this._blocksWithOpenModal
+                : kind === 'editing' ? this._blocksEditing
+                : null;
+      if (!set) return;
+      if (open) set.add(rowId); else set.delete(rowId);
+    },
+
+    /** Focused block on the current story (or null). */
+    get focusedBlock() {
+      if (!this.currentStoryId) return null;
+      const g = this.groups.find(g => g.story_id === this.currentStoryId);
+      if (!g) return null;
+      return g.blocks.find(b => b.row_id === this.focusedRowId) || null;
+    },
+
+    /** Blocks of the current story (empty list if not on story screen). */
+    get currentStoryBlocks() {
+      if (this.screen !== 'story' || !this.currentStoryId) return [];
+      const g = this.groups.find(g => g.story_id === this.currentStoryId);
+      return g ? g.blocks : [];
+    },
+
+    /** Move focus and (optionally) scroll the new card into view. */
+    _moveFocus(nextId, kind) {
+      if (kind === 'block') this.focusedRowId = nextId;
+      if (kind === 'story') this.focusedStoryId = nextId;
+      if (!nextId) return;
+      // Scroll into view on next tick so Alpine can update `:class` first.
+      requestAnimationFrame(() => {
+        const sel = kind === 'block'
+          ? `[data-row-id="${nextId}"]`
+          : `[data-story-id="${nextId}"]`;
+        const el = document.querySelector(sel);
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+    },
+
+    focusNextBlock() {
+      const list = this.currentStoryBlocks;
+      const next = nextFocusable(this.focusedRowId, list);
+      // Clamp: if we're past the end stay on the last one rather than dropping focus.
+      if (next == null && list.length > 0 && this.focusedRowId != null) return;
+      this._moveFocus(next, 'block');
+    },
+
+    focusPrevBlock() {
+      const list = this.currentStoryBlocks;
+      const prev = prevFocusable(this.focusedRowId, list);
+      if (prev == null && list.length > 0 && this.focusedRowId != null) return;
+      this._moveFocus(prev, 'block');
+    },
+
+    focusNextStory() {
+      const list = this.groups;
+      const next = nextFocusable(this.focusedStoryId, list);
+      if (next == null && list.length > 0 && this.focusedStoryId != null) return;
+      this._moveFocus(next, 'story');
+    },
+
+    focusPrevStory() {
+      const list = this.groups;
+      const prev = prevFocusable(this.focusedStoryId, list);
+      if (prev == null && list.length > 0 && this.focusedStoryId != null) return;
+      this._moveFocus(prev, 'story');
+    },
+
+    /** Dispatch a row-scoped action so the per-block component can react. */
+    _dispatchRowAction(rowId, action) {
+      window.dispatchEvent(new CustomEvent('row-action', {
+        detail: { row_id: rowId, action },
+      }));
+    },
+
+    /** True when story-screen has at least one pending block. */
+    storyHasPendingBlocks() {
+      return this.currentStoryBlocks.some(b => ['proposed', 'pending', 'error'].includes(b.status));
+    },
+
+    /** Is *some* block-level modal (skip/delete) currently open? */
+    get _anyBlockModalOpen() {
+      return this._blocksWithOpenModal.size > 0;
+    },
+
+    /** Is *some* block currently in inline-edit mode? */
+    get _anyBlockEditing() {
+      return this._blocksEditing.size > 0;
+    },
+
+    /**
+     * Single root keydown listener. Routes keys based on screen + state.
+     * Order matters: modal handling first, then text-input handling, then editing,
+     * then per-screen shortcuts.
+     */
+    onGlobalKey(event) {
+      const key = event.key;
+
+      // Ignore key combinations with modifiers (cmd/ctrl/alt) so we don't
+      // hijack the user's browser shortcuts (cmd+R, ctrl+L, etc.).
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      // 1. Help overlay open → only Escape and `?` close it.
+      if (this.helpOpen) {
+        if (key === 'Escape' || key === '?' || key === '/') {
+          this.helpOpen = false;
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // 2. globalError toast visible → Escape dismisses, swallow other keys
+      // so they don't accidentally act on stale focus.
+      if (this.globalError) {
+        if (key === 'Escape') {
+          this.globalError = null;
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // 3. Block-level modal open → only Escape; let the block close it via the event.
+      if (this._anyBlockModalOpen) {
+        if (key === 'Escape') {
+          // Broadcast: every block listening will close its own modal if open.
+          window.dispatchEvent(new CustomEvent('row-action', {
+            detail: { row_id: '*', action: 'escape' },
+          }));
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // 4. Focus is in a text input / textarea → only Escape (cancel edit / blur).
+      const tag = (event.target && event.target.tagName) || '';
+      const isTextField = tag === 'TEXTAREA' || tag === 'INPUT';
+      if (isTextField) {
+        if (key === 'Escape') {
+          if (this._anyBlockEditing) {
+            window.dispatchEvent(new CustomEvent('row-action', {
+              detail: { row_id: '*', action: 'cancel-edit' },
+            }));
+          } else if (event.target.blur) {
+            event.target.blur();
+          }
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // 5. Some block is in inline-edit mode but focus is outside the textarea
+      //    (e.g. user clicked a button). Escape cancels; nothing else.
+      if (this._anyBlockEditing) {
+        if (key === 'Escape') {
+          window.dispatchEvent(new CustomEvent('row-action', {
+            detail: { row_id: '*', action: 'cancel-edit' },
+          }));
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // 6. Help toggles work on every screen (when nothing else is open).
+      if (key === '?' || key === '/') {
+        this.helpOpen = true;
+        event.preventDefault();
+        return;
+      }
+
+      // 7. Screen-specific routing.
+      if (this.screen === 'story') {
+        this._handleStoryKey(event);
+      } else if (this.screen === 'overview') {
+        this._handleOverviewKey(event);
+      }
+    },
+
+    _handleStoryKey(event) {
+      const key = event.key;
+      const focused = this.focusedBlock;
+      const focusable = focused
+        && (focused.status === 'proposed' || focused.status === 'pending' || focused.status === 'error');
+
+      if (key === 'j' || key === 'ArrowDown') {
+        this.focusNextBlock();
+        event.preventDefault();
+      } else if (key === 'k' || key === 'ArrowUp') {
+        this.focusPrevBlock();
+        event.preventDefault();
+      } else if (key === 'a' || key === ' ') {
+        if (focused && focusable) {
+          const acceptedId = focused.row_id;
+          this.submitAction({ row_id: acceptedId, action: 'accept' })
+            .then(() => {
+              // Auto-advance to keep the rhythm fast: jump to the next still-pending block.
+              const list = this.currentStoryBlocks;
+              const startIdx = list.findIndex(b => b.row_id === acceptedId);
+              for (let i = startIdx + 1; i < list.length; i++) {
+                if (['proposed', 'pending', 'error'].includes(list[i].status)) {
+                  this._moveFocus(list[i].row_id, 'block');
+                  return;
+                }
+              }
+            })
+            .catch(() => {});
+          event.preventDefault();
+        }
+      } else if (key === 'e') {
+        if (focused && focusable) {
+          this._dispatchRowAction(focused.row_id, 'edit');
+          event.preventDefault();
+        }
+      } else if (key === 's') {
+        if (focused && focusable) {
+          this._dispatchRowAction(focused.row_id, 'skip');
+          event.preventDefault();
+        }
+      } else if (key === 'd') {
+        if (focused && focusable) {
+          this._dispatchRowAction(focused.row_id, 'delete');
+          event.preventDefault();
+        }
+      } else if (key === 'n') {
+        if (!this.storyHasPendingBlocks()) {
+          this.advanceToNextStory();
+          // When advancing, reset block focus on the new story.
+          this.focusedRowId = null;
+          event.preventDefault();
+        }
+      } else if (key === 'b') {
+        this.goToOverview();
+        this.focusedRowId = null;
+        event.preventDefault();
+      } else if (key === 'Escape') {
+        if (this.focusedRowId) {
+          this.focusedRowId = null;
+          event.preventDefault();
+        }
+      }
+    },
+
+    _handleOverviewKey(event) {
+      const key = event.key;
+      if (key === 'j' || key === 'ArrowDown') {
+        this.focusNextStory();
+        event.preventDefault();
+      } else if (key === 'k' || key === 'ArrowUp') {
+        this.focusPrevStory();
+        event.preventDefault();
+      } else if (key === 'Enter' || key === 'o') {
+        if (this.focusedStoryId) {
+          this.goToStory(this.focusedStoryId);
+          this.focusedRowId = null;
+          event.preventDefault();
+        }
+      } else if (key === 'Escape') {
+        if (this.focusedStoryId) {
+          this.focusedStoryId = null;
+          event.preventDefault();
+        }
+      }
+    },
   };
 };
 
@@ -190,6 +468,48 @@ window.blockActions = function (block) {
       this._root = root;
     },
 
+    /**
+     * Handle a row-action event dispatched from appRoot. Each block listens
+     * and acts iff the event is targeted at its row_id (or '*' for broadcast
+     * actions like Escape).
+     */
+    onRowAction(detail) {
+      if (!detail) return;
+      const targetsMe = detail.row_id === this.block.row_id;
+      const isBroadcast = detail.row_id === '*';
+      if (!targetsMe && !isBroadcast) return;
+
+      switch (detail.action) {
+        case 'edit':
+          if (targetsMe) this.startEdit();
+          break;
+        case 'skip':
+          if (targetsMe) this.openSkipModal();
+          break;
+        case 'delete':
+          if (targetsMe) this.openDeleteConfirm();
+          break;
+        case 'escape':
+          // Broadcast: close any modal this block has open.
+          if (this.skipModal) this.closeSkipModal();
+          if (this.deleteModal) this.closeDeleteConfirm();
+          break;
+        case 'cancel-edit':
+          if (this.editing) this.cancelEdit();
+          break;
+      }
+    },
+
+    /** Move keyboard focus into the first textarea once the inline editor is rendered. */
+    _focusFirstEditField() {
+      requestAnimationFrame(() => {
+        const card = document.querySelector(`[data-row-id="${this.block.row_id}"]`);
+        if (!card) return;
+        const ta = card.querySelector('textarea');
+        if (ta && ta.focus) ta.focus();
+      });
+    },
+
     async onAccept() {
       this.busy = true;
       this.error = null;
@@ -210,11 +530,14 @@ window.blockActions = function (block) {
       }
       this.editing = true;
       this.error = null;
+      if (this._root) this._root.notifyBlockUi(this.block.row_id, 'editing', true);
+      this._focusFirstEditField();
     },
 
     cancelEdit() {
       this.editing = false;
       this.editedFields = {};
+      if (this._root) this._root.notifyBlockUi(this.block.row_id, 'editing', false);
     },
 
     async onAcceptEdited() {
@@ -227,6 +550,7 @@ window.blockActions = function (block) {
           edited_payload: { ...this.editedFields },
         });
         this.editing = false;
+        if (this._root) this._root.notifyBlockUi(this.block.row_id, 'editing', false);
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
@@ -235,9 +559,11 @@ window.blockActions = function (block) {
       this.skipForm = { category: 'other', comment: '' };
       this.skipModal = true;
       this.error = null;
+      if (this._root) this._root.notifyBlockUi(this.block.row_id, 'modal', true);
     },
     closeSkipModal() {
       this.skipModal = false;
+      if (this._root) this._root.notifyBlockUi(this.block.row_id, 'modal', false);
     },
     async confirmSkip() {
       this.busy = true;
@@ -249,6 +575,7 @@ window.blockActions = function (block) {
           skip_reason: { ...this.skipForm },
         });
         this.skipModal = false;
+        if (this._root) this._root.notifyBlockUi(this.block.row_id, 'modal', false);
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
@@ -256,9 +583,11 @@ window.blockActions = function (block) {
     openDeleteConfirm() {
       this.deleteModal = true;
       this.error = null;
+      if (this._root) this._root.notifyBlockUi(this.block.row_id, 'modal', true);
     },
     closeDeleteConfirm() {
       this.deleteModal = false;
+      if (this._root) this._root.notifyBlockUi(this.block.row_id, 'modal', false);
     },
     async confirmDelete() {
       this.busy = true;
@@ -269,6 +598,7 @@ window.blockActions = function (block) {
           action: 'delete',
         });
         this.deleteModal = false;
+        if (this._root) this._root.notifyBlockUi(this.block.row_id, 'modal', false);
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
