@@ -95,10 +95,11 @@ window.overviewScreen = function () {
   return {
     init() {},
     storyBadges(group) {
-      const counts = { proposed: 0, accepted: 0, edited: 0, skipped: 0, deleted: 0, error: 0 };
+      const counts = { pending: 0, proposed: 0, accepted: 0, edited: 0, skipped: 0, deleted: 0, error: 0 };
       for (const b of group.blocks) counts[b.status] = (counts[b.status] || 0) + 1;
       const out = [];
-      if (counts.proposed) out.push({ label: 'pending', count: counts.proposed, classes: 'bg-amber-100 text-amber-800' });
+      const needsAction = counts.pending + counts.proposed;
+      if (needsAction)     out.push({ label: 'pending',  count: needsAction,     classes: 'bg-amber-100 text-amber-800' });
       if (counts.accepted) out.push({ label: 'accepted', count: counts.accepted, classes: 'bg-emerald-100 text-emerald-800' });
       if (counts.edited)   out.push({ label: 'edited',   count: counts.edited,   classes: 'bg-emerald-100 text-emerald-800' });
       if (counts.skipped)  out.push({ label: 'skipped',  count: counts.skipped,  classes: 'bg-slate-200 text-slate-700' });
