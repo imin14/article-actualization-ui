@@ -7,8 +7,8 @@ These `.workflow.js` files are the n8n Workflow SDK source for the workflows tha
 ### `wf-search-preprocess.workflow.js`
 
 **Live workflow IDs in n8n:**
-- `m0HxFfubActwbKBh` — current active definition (created 2026-05-04 22:40 UTC)
-- `jIVm69uTSn9iL3GX` — earlier iteration, should be deleted in morning cleanup (duplicate)
+- `jIVm69uTSn9iL3GX` — **canonical** definition (kept by the build agent; matches the SDK source archived here)
+- `m0HxFfubActwbKBh` — duplicate from a 500-error-then-success retry; **delete this one** in morning cleanup. Both are inactive.
 
 **Display name:** "Mass Actualization: Search & Pre-Process"
 **Status:** INACTIVE (will not auto-trigger)
