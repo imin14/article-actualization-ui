@@ -187,7 +187,7 @@ Translation cascade is a separate, explicitly-triggered workflow — not auto-fi
 |---|---|---|
 | Frontend code | Complete | `article-actualization-ui/` repo |
 | Frontend deploy | Pending — push to GitHub | `.github/workflows/pages.yml` ready |
-| Frontend tests | 81 passing | `tests/*.test.js` |
+| Frontend tests | 110 passing | `tests/*.test.js` + `pipeline/*.test.js` |
 | WF-UIBackend | Built, validated, tested | n8n `ORKhXHUFSANVF51w` (inactive) |
 | WF-Search-PreProcess | Built, validated | n8n (inactive) — see morning report for ID |
 | WF-Cascade | Existing | n8n `lBCSrbEPX7BXx1CR` (Turkey Blocks Generator v3) |

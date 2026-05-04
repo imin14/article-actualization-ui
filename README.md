@@ -14,7 +14,7 @@ Static SPA for reviewing LLM-proposed rewrites of Storyblok blocks during mass c
 ```
 npm install
 npm run serve         # serves index.html at http://localhost:8080
-npm test              # run unit tests (27 tests across state/diff/api)
+npm test              # run unit tests (110 tests across lib/ and pipeline/)
 npm run test:watch    # tests in watch mode
 ```
 
