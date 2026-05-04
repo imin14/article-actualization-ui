@@ -152,6 +152,8 @@ window.blockActions = function (block) {
     block,
     busy: false,
     error: null,
+    editing: false,
+    editedFields: {},
     init(root) {
       this._root = root;
     },
@@ -159,15 +161,35 @@ window.blockActions = function (block) {
       this.busy = true;
       this.error = null;
       try {
+        await this._root.submitAction({ row_id: this.block.row_id, action: 'accept' });
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.busy = false; }
+    },
+    startEdit() {
+      this.editedFields = {};
+      const proposed = this.block.proposed_payload || {};
+      for (const k of Object.keys(this.block.original_payload || {})) {
+        this.editedFields[k] = proposed[k] != null ? proposed[k] : (this.block.original_payload[k] || '');
+      }
+      this.editing = true;
+      this.error = null;
+    },
+    cancelEdit() {
+      this.editing = false;
+      this.editedFields = {};
+    },
+    async onAcceptEdited() {
+      this.busy = true;
+      this.error = null;
+      try {
         await this._root.submitAction({
           row_id: this.block.row_id,
-          action: 'accept',
+          action: 'edit',
+          edited_payload: { ...this.editedFields },
         });
-      } catch (e) {
-        this.error = String(e.message || e);
-      } finally {
-        this.busy = false;
-      }
+        this.editing = false;
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.busy = false; }
     },
   };
 };

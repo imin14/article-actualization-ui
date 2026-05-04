@@ -149,11 +149,35 @@
                              x-data="blockActions(block)" x-init="init($root)">
 
                           <template x-if="block.status === 'proposed' || block.status === 'pending' || block.status === 'error'">
-                            <div class="flex flex-wrap gap-2">
-                              <button class="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                                      :disabled="busy"
-                                      @click="onAccept()">✅ Accept</button>
-                              <!-- Edit / Skip / Delete buttons added in subsequent tasks -->
+                            <div class="w-full">
+                              <div class="flex flex-wrap gap-2" x-show="!editing">
+                                <button class="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                        :disabled="busy"
+                                        @click="onAccept()">✅ Accept</button>
+                                <button class="px-3 py-1.5 text-sm rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                                        :disabled="busy"
+                                        @click="startEdit()">✏️ Edit</button>
+                                <!-- Skip / Delete added in next tasks -->
+                              </div>
+
+                              <div x-show="editing" class="space-y-3">
+                                <template x-for="fieldName in Object.keys(block.original_payload)" :key="fieldName">
+                                  <div>
+                                    <div class="text-xs font-mono text-slate-500 mb-1" x-text="fieldName"></div>
+                                    <textarea class="w-full border border-slate-300 rounded p-2 text-sm font-mono"
+                                              rows="4"
+                                              x-model="editedFields[fieldName]"></textarea>
+                                  </div>
+                                </template>
+                                <div class="flex gap-2">
+                                  <button class="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                          :disabled="busy"
+                                          @click="onAcceptEdited()">Save & Apply</button>
+                                  <button class="px-3 py-1.5 text-sm rounded border border-slate-300 hover:bg-slate-50"
+                                          :disabled="busy"
+                                          @click="cancelEdit()">Cancel</button>
+                                </div>
+                              </div>
                             </div>
                           </template>
 
