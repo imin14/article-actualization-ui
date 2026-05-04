@@ -167,6 +167,9 @@ window.blockActions = function (block) {
       { value: 'other',             label: 'Другое' },
     ],
 
+    // Delete state
+    deleteModal: false,
+
     init(root) {
       this._root = root;
     },
@@ -227,6 +230,26 @@ window.blockActions = function (block) {
           skip_reason: { ...this.skipForm },
         });
         this.skipModal = false;
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.busy = false; }
+    },
+
+    openDeleteConfirm() {
+      this.deleteModal = true;
+      this.error = null;
+    },
+    closeDeleteConfirm() {
+      this.deleteModal = false;
+    },
+    async confirmDelete() {
+      this.busy = true;
+      this.error = null;
+      try {
+        await this._root.submitAction({
+          row_id: this.block.row_id,
+          action: 'delete',
+        });
+        this.deleteModal = false;
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
