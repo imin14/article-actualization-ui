@@ -3,20 +3,24 @@ import { groupByStory, computeProgress, applyAction, getNextPendingStory } from 
 import { renderDiffHTML } from './lib/diff.js';
 
 // === Configuration ===
-// To switch to the real backend, change mode to 'real' and supply baseURL + token
-// (or read them from URL query params). For now, we run against the mock client.
-const API_MODE = 'mock';
-const API_BASE_URL = ''; // e.g. 'https://imin-n8n.run.app'
-const API_TOKEN = '';    // bearer token; for production read from URL ?t=
+// API config is read from URL query params:
+//   ?campaign=<campaign_id>          — required for real campaigns; defaults to mock fixture
+//   ?api=<n8n base URL>              — when present, switches to real client; absent = mock mode
+//   ?t=<bearer token>                — auth token for n8n webhooks
+//
+// Without ?api=, the app runs against the in-memory mock for local development.
+const params = new URLSearchParams(window.location.search);
+const CAMPAIGN_ID = params.get('campaign') || 'cmp-portugal-2026-05-04';
+
+const API_BASE_URL = params.get('api') || '';
+const API_TOKEN = params.get('t') || '';
+const API_MODE = API_BASE_URL ? 'real' : 'mock';
 
 const api = createAPIClient({
   mode: API_MODE,
   baseURL: API_BASE_URL,
   token: API_TOKEN,
 });
-
-const params = new URLSearchParams(window.location.search);
-const CAMPAIGN_ID = params.get('campaign') || 'cmp-portugal-2026-05-04';
 
 window.appRoot = function () {
   return {
