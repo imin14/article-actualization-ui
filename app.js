@@ -73,7 +73,18 @@ window.appRoot = function () {
         this.groups = groupByStory(this.state.blocks);
       }
       try {
-        await api.postAction({ ...payload, campaign_id: CAMPAIGN_ID });
+        const result = await api.postAction({ ...payload, campaign_id: CAMPAIGN_ID });
+        // Reconcile with server: if backend reports a different new_status
+        // (e.g. Storyblok write failed → 'error' even though we predicted
+        // 'accepted'), overwrite the local row so the UI reflects truth.
+        if (result && result.new_status && idx >= 0) {
+          const current = this.state.blocks[idx].status;
+          if (current !== result.new_status) {
+            this.state.blocks[idx] = { ...this.state.blocks[idx], status: result.new_status };
+            this.state.progress = computeProgress(this.state.blocks);
+            this.groups = groupByStory(this.state.blocks);
+          }
+        }
       } catch (e) {
         this.globalError = `Действие не сохранилось: ${e.message}. Состояние возвращено.`;
         await this.refresh();
