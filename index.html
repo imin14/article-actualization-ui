@@ -138,7 +138,9 @@
                                      block.original_payload[fieldName],
                                      (block.edited_payload && block.edited_payload[fieldName] != null
                                         ? block.edited_payload[fieldName]
-                                        : block.proposed_payload[fieldName])
+                                        : (block.proposed_payload && block.proposed_payload[fieldName] != null
+                                            ? block.proposed_payload[fieldName]
+                                            : block.original_payload[fieldName]))
                                    )"></div>
                             </div>
                           </template>
