@@ -114,3 +114,33 @@ describe('truncateToTokenBudget', () => {
     expect(truncateToTokenBudget('hello world', 0)).toBe('');
   });
 });
+
+describe('tokenize edge cases', () => {
+  it('approxTokens with empty string returns exactly 0', () => {
+    expect(approxTokens('')).toBe(0);
+  });
+
+  it('approxTokens on Cyrillic-only string of length N produces roughly 2x the tokens of a Latin-only string of the same length', () => {
+    // Same-length pure-script samples; punctuation kept low to avoid the boost.
+    const ru = 'абвгдеёжзийклмнопрстуфхцч'; // 25 Cyrillic letters
+    const en = 'abcdefghijklmnopqrstuvwxy'; // 25 Latin letters
+    expect(ru.length).toBe(en.length);
+    const tRu = approxTokens(ru);
+    const tEn = approxTokens(en);
+    // Cyrillic is chars/2, Latin is chars/4 → roughly 2x ratio. Allow 1.5x–3x.
+    const ratio = tRu / tEn;
+    expect(ratio).toBeGreaterThanOrEqual(1.5);
+    expect(ratio).toBeLessThanOrEqual(3);
+  });
+
+  it('truncateToTokenBudget returns text unchanged when budget exceeds the actual token count', () => {
+    const text = 'the quick brown fox';
+    const out = truncateToTokenBudget(text, 1_000_000);
+    expect(out).toBe(text);
+  });
+
+  it('truncateToTokenBudget with budget=0 returns empty string for any non-empty input', () => {
+    expect(truncateToTokenBudget('hello', 0)).toBe('');
+    expect(truncateToTokenBudget('a very long string with many words here', 0)).toBe('');
+  });
+});

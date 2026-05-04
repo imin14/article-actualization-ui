@@ -106,3 +106,65 @@ describe('getNextPendingStory', () => {
     expect(getNextPendingStory(groups, null)).toBe('b');
   });
 });
+
+describe('edge cases', () => {
+  it('groupByStory keeps first-seen story_name when blocks share story_id but have different story_names', () => {
+    const blocks = [
+      { story_id: 's1', story_name: 'First Name', story_full_slug: 'a', locale: 'ru', row_id: 'r1' },
+      { story_id: 's1', story_name: 'Different Name', story_full_slug: 'a', locale: 'ru', row_id: 'r2' },
+    ];
+    const groups = groupByStory(blocks);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].story_name).toBe('First Name');
+    expect(groups[0].blocks).toHaveLength(2);
+  });
+
+  it('computeProgress with unknown statuses tracks them in by_status but does NOT subtract from reviewed (pinning current behavior)', () => {
+    // The reviewed calculation only subtracts pending+proposed+error. An unknown
+    // status like "foo" gets counted toward reviewed even though it's not
+    // really reviewed — this pins current behavior.
+    const blocks = [{ status: 'foo' }, { status: 'accepted' }];
+    const progress = computeProgress(blocks);
+    expect(progress.total).toBe(2);
+    expect(progress.by_status['foo']).toBe(1);
+    expect(progress.by_status.accepted).toBe(1);
+    // total(2) - pending(0) - proposed(0) - error(0) = 2; "foo" counted as reviewed.
+    expect(progress.reviewed).toBe(2);
+  });
+
+  it('applyAction returns a new object and does not mutate the input', () => {
+    const block = {
+      row_id: 'r-001', status: 'proposed', proposed_payload: { a: 'X' },
+      edited_payload: null, skip_reason: null,
+    };
+    const snapshot = JSON.parse(JSON.stringify(block));
+    const updated = applyAction(block, { action: 'accept' });
+    expect(block).toEqual(snapshot);
+    expect(updated).not.toBe(block);
+    expect(updated.status).toBe('accepted');
+  });
+
+  it('applyAction with action=edit and missing edited_payload sets edited_payload to undefined and does not crash', () => {
+    const block = { row_id: 'r-001', status: 'proposed', proposed_payload: { a: 'X' }, edited_payload: null };
+    const updated = applyAction(block, { action: 'edit' });
+    expect(updated.status).toBe('edited');
+    expect(updated.edited_payload).toBeUndefined();
+  });
+
+  it('getNextPendingStory with current_story_id not in groups falls back to first pending story', () => {
+    const groups = [
+      { story_id: 'a', blocks: [{ status: 'proposed' }] },
+      { story_id: 'b', blocks: [{ status: 'proposed' }] },
+    ];
+    // findIndex returns -1 for not-found; loop starts at 0 → returns 'a'.
+    expect(getNextPendingStory(groups, 'nonexistent')).toBe('a');
+  });
+
+  it('getNextPendingStory with a single fully-reviewed group returns null', () => {
+    const groups = [
+      { story_id: 'a', blocks: [{ status: 'accepted' }, { status: 'skipped' }] },
+    ];
+    expect(getNextPendingStory(groups, null)).toBeNull();
+    expect(getNextPendingStory(groups, 'a')).toBeNull();
+  });
+});

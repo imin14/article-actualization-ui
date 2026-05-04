@@ -271,3 +271,50 @@ describe('buildRewritePrompt', () => {
     expect(threw || (res && res.prompt === '')).toBe(true);
   });
 });
+
+describe('search-strategy edge cases', () => {
+  it('findHitsInBlock skips non-string field values gracefully when keyword is searched', () => {
+    const block = {
+      original_payload: {
+        heading: 'About 5 years',
+        meta: { x: 42 },           // object, not string
+        count: 5,                   // number, not string
+        flag: true,                 // boolean, not string
+      },
+    };
+    const hits = findHitsInBlock(block, '5 years');
+    expect(hits.map(h => h.field)).toEqual(['heading']);
+  });
+
+  it('buildClassificationPrompt with empty hits returns an empty prompt (signals no hits to classify)', () => {
+    const out = buildClassificationPrompt({
+      keyword: 'k',
+      contextDescription: 'topic X',
+      hits: [],
+    });
+    expect(out.prompt).toBe('');
+    expect(out.schema).toBeDefined();
+  });
+
+  it('buildRewritePrompt includes the rewrite instruction verbatim somewhere in the output', () => {
+    const rewriteText = 'Replace 5 years with 10 years where it refers to Portuguese citizenship.';
+    const out = buildRewritePrompt({
+      rewritePrompt: rewriteText,
+      block: {
+        block_component: 'sectionBlock',
+        original_payload: {
+          textMarkdown: 'You can apply after 5 years.',
+        },
+      },
+      hits: [
+        {
+          field: 'textMarkdown',
+          hit_index: 0,
+          hit_paragraph: 'You can apply after 5 years.',
+          context: 'You can apply after 5 years.',
+        },
+      ],
+    });
+    expect(out.prompt).toContain(rewriteText);
+  });
+});

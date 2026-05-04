@@ -139,3 +139,37 @@ describe('extractContextWindow', () => {
     expect(threw || result === '').toBe(true);
   });
 });
+
+describe('chunking edge cases', () => {
+  it('splitIntoParagraphs splits on Windows \\r\\n\\r\\n separators', () => {
+    // CRLF is normalised to LF before splitting on blank lines.
+    const md = 'First.\r\n\r\nSecond.\r\n\r\nThird.';
+    expect(splitIntoParagraphs(md)).toEqual(['First.', 'Second.', 'Third.']);
+  });
+
+  it('findKeywordParagraphs is case-insensitive by default — keyword "Portugal" matches "portugal is great"', () => {
+    const hits = findKeywordParagraphs('portugal is great', 'Portugal');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].index).toBe(0);
+    expect(hits[0].text).toBe('portugal is great');
+  });
+
+  it('findKeywordParagraphs returns the paragraph once even when keyword appears multiple times within it', () => {
+    const md = '5 years and again 5 years here.\n\nNothing else.';
+    const hits = findKeywordParagraphs(md, '5 years');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].index).toBe(0);
+  });
+
+  it('extractContextWindow with hitIndex=0 and before>0 clamps to start of array', () => {
+    const paragraphs = ['P0', 'P1', 'P2'];
+    expect(extractContextWindow(paragraphs, 0, 5, 0)).toBe('P0');
+    expect(extractContextWindow(paragraphs, 0, 5, 1)).toBe('P0\n\nP1');
+  });
+
+  it('extractContextWindow with hitIndex=last and after>0 clamps to end of array', () => {
+    const paragraphs = ['P0', 'P1', 'P2'];
+    expect(extractContextWindow(paragraphs, 2, 0, 5)).toBe('P2');
+    expect(extractContextWindow(paragraphs, 2, 1, 5)).toBe('P1\n\nP2');
+  });
+});

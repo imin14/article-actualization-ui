@@ -43,3 +43,59 @@ describe('renderDiffHTML', () => {
     expect(html).toContain('changed');
   });
 });
+
+describe('escapeHTML edge cases', () => {
+  it('passes through 4-byte emoji unchanged (no HTML special chars in surrogate pair)', () => {
+    const out = escapeHTML('5 → 10 🎉');
+    expect(out).toBe('5 → 10 🎉');
+  });
+
+  it('preserves Cyrillic while escaping brackets and ampersand in mixed content', () => {
+    const out = escapeHTML('<b>да & нет</b>');
+    expect(out).toContain('да');
+    expect(out).toContain('нет');
+    expect(out).toContain('&lt;b&gt;');
+    expect(out).toContain('&lt;/b&gt;');
+    expect(out).toContain('&amp;');
+    expect(out).not.toContain('<b>');
+  });
+});
+
+describe('renderDiffHTML edge cases', () => {
+  it('does not crash when one input is null and renders the non-null side', () => {
+    // renderDiffHTML coerces null → '' internally. So null vs string behaves
+    // like '' vs string — entire string gets marked as added.
+    const fromNull = renderDiffHTML(null, 'hello');
+    expect(fromNull).toContain('hello');
+    expect(fromNull).toContain('<ins');
+
+    const toNull = renderDiffHTML('hello', null);
+    expect(toNull).toContain('hello');
+    expect(toNull).toContain('<del');
+  });
+
+  it('handles very long mostly-identical inputs without crashing and produces bounded output', () => {
+    const base = 'word '.repeat(2000); // ~10KB
+    const changed = base + 'extra';
+    const out = renderDiffHTML(base, changed);
+    // Output should at least include the prose; we just want to ensure it
+    // didn't blow up and produces a string of plausible size.
+    expect(typeof out).toBe('string');
+    expect(out.length).toBeGreaterThan(0);
+    // Bounded: shouldn't be more than a small multiple of input size.
+    expect(out.length).toBeLessThan(changed.length * 5);
+    expect(out).toContain('extra');
+  });
+
+  it('preserves Cyrillic word boundaries — marks "5" removed and "10" added but keeps "лет" unchanged', () => {
+    const out = renderDiffHTML('5 лет', '10 лет');
+    expect(out).toMatch(/<del[^>]*>5<\/del>/);
+    expect(out).toMatch(/<ins[^>]*>10<\/ins>/);
+    // "лет" should appear outside of any del/ins tags (preserved segment).
+    // After removing all del/ins blocks we should still see "лет".
+    const stripped = out
+      .replace(/<del[^>]*>[\s\S]*?<\/del>/g, '')
+      .replace(/<ins[^>]*>[\s\S]*?<\/ins>/g, '');
+    expect(stripped).toContain('лет');
+  });
+});
