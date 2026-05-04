@@ -157,7 +157,9 @@
                                 <button class="px-3 py-1.5 text-sm rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
                                         :disabled="busy"
                                         @click="startEdit()">✏️ Edit</button>
-                                <!-- Skip / Delete added in next tasks -->
+                                <button class="px-3 py-1.5 text-sm rounded bg-slate-500 text-white hover:bg-slate-600 disabled:opacity-50"
+                                        :disabled="busy"
+                                        @click="openSkipModal()">⏭️ Skip</button>
                               </div>
 
                               <div x-show="editing" class="space-y-3">
@@ -190,6 +192,35 @@
                           <template x-if="error">
                             <div class="text-xs text-red-700" x-text="'Ошибка: ' + error"></div>
                           </template>
+
+                          <div x-show="skipModal"
+                               class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+                               @click.self="closeSkipModal()">
+                            <div class="bg-white rounded shadow-lg max-w-md w-full p-5">
+                              <h3 class="font-semibold mb-3">Skip block: причина</h3>
+
+                              <div class="space-y-2 text-sm">
+                                <template x-for="opt in skipReasonOptions" :key="opt.value">
+                                  <label class="flex items-start gap-2 cursor-pointer">
+                                    <input type="radio" :value="opt.value" x-model="skipForm.category" class="mt-1">
+                                    <span x-text="opt.label"></span>
+                                  </label>
+                                </template>
+                              </div>
+
+                              <textarea class="w-full border border-slate-300 rounded p-2 text-sm mt-3"
+                                        rows="3" placeholder="Комментарий (опционально)"
+                                        x-model="skipForm.comment"></textarea>
+
+                              <div class="flex justify-end gap-2 mt-4">
+                                <button class="px-3 py-1.5 text-sm rounded border border-slate-300 hover:bg-slate-50"
+                                        @click="closeSkipModal()">Cancel</button>
+                                <button class="px-3 py-1.5 text-sm rounded bg-slate-700 text-white hover:bg-slate-900 disabled:opacity-50"
+                                        :disabled="busy"
+                                        @click="confirmSkip()">Skip</button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </li>
                     </template>

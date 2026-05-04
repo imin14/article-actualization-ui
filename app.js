@@ -152,11 +152,25 @@ window.blockActions = function (block) {
     block,
     busy: false,
     error: null,
+
+    // Edit state
     editing: false,
     editedFields: {},
+
+    // Skip state
+    skipModal: false,
+    skipForm: { category: 'other', comment: '' },
+    skipReasonOptions: [
+      { value: 'llm_misunderstood', label: 'LLM не понял контекст' },
+      { value: 'fact_recheck',      label: 'Нужна перепроверка фактов' },
+      { value: 'complex_case',      label: 'Сложный кейс — требует ручной правки' },
+      { value: 'other',             label: 'Другое' },
+    ],
+
     init(root) {
       this._root = root;
     },
+
     async onAccept() {
       this.busy = true;
       this.error = null;
@@ -165,6 +179,7 @@ window.blockActions = function (block) {
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
+
     startEdit() {
       this.editedFields = {};
       const proposed = this.block.proposed_payload || {};
@@ -174,10 +189,12 @@ window.blockActions = function (block) {
       this.editing = true;
       this.error = null;
     },
+
     cancelEdit() {
       this.editing = false;
       this.editedFields = {};
     },
+
     async onAcceptEdited() {
       this.busy = true;
       this.error = null;
@@ -188,6 +205,28 @@ window.blockActions = function (block) {
           edited_payload: { ...this.editedFields },
         });
         this.editing = false;
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.busy = false; }
+    },
+
+    openSkipModal() {
+      this.skipForm = { category: 'other', comment: '' };
+      this.skipModal = true;
+      this.error = null;
+    },
+    closeSkipModal() {
+      this.skipModal = false;
+    },
+    async confirmSkip() {
+      this.busy = true;
+      this.error = null;
+      try {
+        await this._root.submitAction({
+          row_id: this.block.row_id,
+          action: 'skip',
+          skip_reason: { ...this.skipForm },
+        });
+        this.skipModal = false;
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
