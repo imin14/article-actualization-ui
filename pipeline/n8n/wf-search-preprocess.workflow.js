@@ -56,6 +56,11 @@ const formTrigger = trigger({
 // CORS preflight (OPTIONS) is auto-handled by n8n when allowedOrigins is set
 // on the POST trigger — adding a separate OPTIONS trigger on the same path
 // causes a path-collision 500.
+// Auth: built-in n8n Header Auth on the trigger itself.
+// The credential 'Actualization UI Webhook' is a Header Auth cred whose
+// `name` is `Authorization` and `value` is `Bearer <secret>`.
+// n8n rejects requests with a 401 before the workflow runs if the header
+// is missing/wrong; CORS headers from `allowedOrigins` are still emitted.
 const searchWebhook = trigger({
   type: 'n8n-nodes-base.webhook',
   version: 2.1,
@@ -65,10 +70,14 @@ const searchWebhook = trigger({
     parameters: {
       httpMethod: 'POST',
       path: 'search-trigger',
+      authentication: 'headerAuth',
       responseMode: 'responseNode',
       options: {
         allowedOrigins: 'https://imin.github.io,http://localhost:8080',
       },
+    },
+    credentials: {
+      httpHeaderAuth: newCredential('Actualization UI Webhook'),
     },
   },
   output: [{
@@ -82,37 +91,31 @@ const searchWebhook = trigger({
       content_type: 'flatArticle',
       rewrite_prompt: 'Update content where Portugal Golden Visa requires 10 years (not 5)...',
       dry_run: true,
-      t: 'dev-token-change-me',
     },
     headers: { origin: 'https://imin.github.io' },
   }],
 });
 
-// Validate auth + normalise webhook payload to the same shape initCampaign expects.
-// Also computes __cors_origin (reflected origin if whitelisted) so downstream
-// Respond nodes can emit a single Access-Control-Allow-Origin header.
+// Normalise webhook payload to the same shape initCampaign expects.
+// Auth is handled upstream by the trigger's built-in headerAuth, so this node
+// only does field validation and computes __cors_origin (reflected origin if
+// whitelisted) so downstream Respond nodes can emit a single CORS header.
 const validateWebhookInput = node({
   type: 'n8n-nodes-base.code',
   version: 2,
   config: {
-    name: 'Validate webhook auth + payload',
+    name: 'Validate webhook payload',
     position: [240, 200],
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode: `const EXPECTED_TOKEN = 'dev-token-change-me';
-const ALLOWED_ORIGINS = ['https://imin.github.io', 'http://localhost:8080'];
+      jsCode: `const ALLOWED_ORIGINS = ['https://imin.github.io', 'http://localhost:8080'];
 const DEFAULT_ORIGIN = 'https://imin.github.io';
 const raw = $input.first().json || {};
 const body = raw.body || raw;
 const headers = raw.headers || {};
 const originHeader = headers.origin || headers.Origin || '';
 const corsOrigin = ALLOWED_ORIGINS.indexOf(originHeader) >= 0 ? originHeader : DEFAULT_ORIGIN;
-const authHeader = headers.authorization || headers.Authorization || '';
-const t = (body.t || authHeader.replace(/^Bearer\\s+/i, '') || '').trim();
-if (t !== EXPECTED_TOKEN) {
-  return [{ json: { __error: 'unauthorized', __status: 401, __cors_origin: corsOrigin } }];
-}
 const required = ['campaign_topic', 'keyword', 'context_description', 'rewrite_prompt'];
 const missing = required.filter(k => !body[k] || String(body[k]).trim() === '');
 if (missing.length) {
@@ -151,11 +154,12 @@ return [{ json: {
   }],
 });
 
-// Branch on whether validateWebhookInput emitted an error.
-const checkAuth = ifElse({
+// Branch on whether validateWebhookInput emitted an error (missing fields).
+// Auth itself is enforced upstream by the trigger's headerAuth.
+const checkPayload = ifElse({
   version: 2.2,
   config: {
-    name: 'Auth ok?',
+    name: 'Payload ok?',
     position: [480, 200],
     parameters: {
       conditions: {
@@ -233,7 +237,7 @@ const stripCorsField = node({
       mode: 'runOnceForAllItems',
       language: 'javaScript',
       jsCode: `const items = $input.all();
-const validated = $('Validate webhook auth + payload').first().json;
+const validated = $('Validate webhook payload').first().json;
 const out = Object.assign({}, validated);
 delete out.__cors_origin;
 delete out.__error;
@@ -777,7 +781,7 @@ const stickyPipeline = sticky(
 );
 
 const stickyWebhookEntrypoint = sticky(
-  '## SPA webhook entrypoint\n\nPOST /webhook/search-trigger - JSON body with form-trigger fields plus a shared token t.\n\nValidate node returns 401 (bad token) or 400 (missing required field) before hitting the rest of the pipeline. Success path responds immediately with { queued: true, campaign_id, started_at } then continues to Init Campaign Meta in the background.\n\nCORS: imin.github.io and localhost:8080 whitelisted at the n8n trigger level (allowedOrigins). n8n auto-handles OPTIONS preflight on the POST trigger when allowedOrigins is set - NO separate OPTIONS trigger (would cause path-collision 500).\n\nForm trigger remains untouched.',
+  '## SPA webhook entrypoint\n\nPOST /webhook/search-trigger - JSON body with form-trigger fields. Auth via Authorization: Bearer <token> header.\n\nAuth: built-in n8n headerAuth on the trigger using credential "Actualization UI Webhook" (Header Auth type, name=Authorization, value=Bearer <secret>). Wrong/missing header is rejected by n8n with 401 BEFORE the workflow runs.\n\nValidate node returns 400 (missing required field) before hitting the rest of the pipeline. Success path responds immediately with { queued: true, campaign_id, started_at } then continues to Init Campaign Meta in the background.\n\nCORS: imin.github.io and localhost:8080 whitelisted at the n8n trigger level (allowedOrigins). n8n auto-handles OPTIONS preflight when allowedOrigins is set - NO separate OPTIONS trigger (would cause path-collision 500).\n\nForm trigger remains untouched.',
   [],
   { color: 5, width: 480, height: 320 },
 );
@@ -802,11 +806,12 @@ export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pr
       )
       .onDone(slackNotify),
   )
-  // Branch 2: SPA webhook → validate → checkAuth → respondQueued → initCampaign.
+  // Branch 2: SPA webhook (auth via headerAuth on trigger) → validate fields →
+  // checkPayload → respondQueued → initCampaign.
   .add(searchWebhook)
   .to(validateWebhookInput)
   .to(
-    checkAuth
+    checkPayload
       .onTrue(respondQueued.to(stripCorsField).to(initCampaign))
       .onFalse(respondError),
   )

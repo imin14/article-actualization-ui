@@ -814,8 +814,11 @@ window.searchScreen = function () {
       try {
         res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...this.form, t: API_TOKEN }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${API_TOKEN}`,
+          },
+          body: JSON.stringify(this.form),
           signal: ctrl.signal,
         });
       } catch (e) {
