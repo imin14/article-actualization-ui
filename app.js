@@ -899,7 +899,11 @@ window.searchScreen = function () {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${API_TOKEN}`,
+            // Authorization header value is the raw token, no "Bearer " prefix:
+            // Cloud Run's reverse proxy intercepts "Bearer ..." values as
+            // Google IAM tokens and rejects with 403 before n8n ever sees the
+            // request. Empirically verified — see commit log for fix-detail.
+            Authorization: CURRENT_TOKEN,
           },
           body: JSON.stringify(this.form),
           signal: ctrl.signal,
