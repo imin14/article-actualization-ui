@@ -187,7 +187,10 @@ const fetchStoryblokStories = node({
   ] }, options: {
     timeout: 60000,
     response: { response: { fullResponse: false, responseFormat: 'json', neverError: true } },
-    batching: { batch: { batchSize: 5, batchInterval: 1100 } },
+    // Storyblok CDN limits to 6 req/sec. batchSize=1 + 400ms = 2.5 req/sec
+    // leaves headroom for parallel runs sharing the budget.
+    batching: { batch: { batchSize: 1, batchInterval: 400 } },
+    retry: { maxTries: 3, waitBetweenTries: 2000 },
   } } },
   output: [{ stories: [] }],
 });

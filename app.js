@@ -359,7 +359,11 @@ window.appRoot = function () {
       this.groups = groupByStory(state.blocks);
 
       // If finished and no pending stories anywhere, show 'done'.
-      if (this.state.progress.reviewed >= this.state.progress.total) {
+      // "Done" only when there's actually something AND it's all reviewed.
+      // If total === 0, the campaign is just empty (no matches yet, or the
+      // search workflow is still running) — showing the done screen would
+      // be misleading.
+      if (this.state.progress.total > 0 && this.state.progress.reviewed >= this.state.progress.total) {
         this.screen = 'done';
       }
     },
