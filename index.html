@@ -120,18 +120,25 @@
             <a href="/" class="shrink-0 flex items-center gap-3 group" title="Immigrant Invest">
               <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity group-hover:opacity-80">
             </a>
-            <div class="hidden sm:block w-px h-7 bg-[var(--imin-border)]"></div>
-            <div class="min-w-0 flex-1">
-              <div class="section-label">Campaign</div>
-              <div class="font-semibold text-[15px] text-[var(--imin-text)] truncate" x-text="state.campaign.topic"></div>
-            </div>
-            <div class="hidden sm:flex flex-col items-end shrink-0">
-              <div class="section-label">Progress</div>
-              <div class="text-sm text-[var(--imin-text)] font-medium tabular-nums">
-                <span x-text="state.progress.reviewed"></span> /
-                <span x-text="state.progress.total"></span>
+            <template x-if="state">
+              <div class="contents">
+                <div class="hidden sm:block w-px h-7 bg-[var(--imin-border)]"></div>
+                <div class="min-w-0 flex-1">
+                  <div class="section-label">Campaign</div>
+                  <div class="font-semibold text-[15px] text-[var(--imin-text)] truncate" x-text="state.campaign.topic"></div>
+                </div>
+                <div class="hidden sm:flex flex-col items-end shrink-0">
+                  <div class="section-label">Progress</div>
+                  <div class="text-sm text-[var(--imin-text)] font-medium tabular-nums">
+                    <span x-text="state.progress.reviewed"></span> /
+                    <span x-text="state.progress.total"></span>
+                  </div>
+                </div>
               </div>
-            </div>
+            </template>
+            <template x-if="!state">
+              <div class="flex-1"></div>
+            </template>
             <template x-if="apiMode === 'real' && hasToken">
               <button type="button"
                       @click="logout()"
@@ -141,10 +148,12 @@
               </button>
             </template>
           </div>
-          <div class="progress-track">
-            <div class="progress-fill"
-                 :style="`width: ${(state.progress.reviewed / Math.max(1, state.progress.total)) * 100}%`"></div>
-          </div>
+          <template x-if="state">
+            <div class="progress-track">
+              <div class="progress-fill"
+                   :style="`width: ${(state.progress.reviewed / Math.max(1, state.progress.total)) * 100}%`"></div>
+            </div>
+          </template>
         </header>
 
         <main class="max-w-5xl mx-auto px-6 py-8">

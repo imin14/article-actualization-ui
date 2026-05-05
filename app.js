@@ -24,7 +24,13 @@ function getAppRootScope() {
 //
 // Without ?api=, the app runs against the in-memory mock for local development.
 const params = new URLSearchParams(window.location.search);
-const CAMPAIGN_ID = params.get('campaign') || 'cmp-portugal-2026-05-04';
+const CAMPAIGN_ID_PARAM = params.get('campaign');
+const CAMPAIGN_ID = CAMPAIGN_ID_PARAM || 'cmp-portugal-2026-05-04';
+// True only when the URL explicitly named a campaign — otherwise the editor
+// is just landing on the SPA to start a new one and we should skip the
+// auto-load (which would otherwise hit a non-existent campaign and show a
+// confusing error toast).
+const HAS_EXPLICIT_CAMPAIGN = !!CAMPAIGN_ID_PARAM;
 
 const API_BASE_URL = params.get('api') || '';
 const API_MODE = API_BASE_URL ? 'real' : 'mock';
@@ -108,6 +114,14 @@ window.appRoot = function () {
       // can't trigger a 401 cascade.
       if (this.apiMode === 'real' && !this.hasToken) {
         this.screen = 'auth';
+        this.loading = false;
+        return;
+      }
+      // Real mode with no explicit ?campaign= → editor is landing to start
+      // a new campaign, not view an existing one. Skip the auto-load (which
+      // would hit a non-existent default campaign) and go straight to search.
+      if (this.apiMode === 'real' && !HAS_EXPLICIT_CAMPAIGN) {
+        this.screen = 'search';
         this.loading = false;
         return;
       }
