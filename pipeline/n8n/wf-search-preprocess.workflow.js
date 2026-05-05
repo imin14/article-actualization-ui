@@ -114,7 +114,12 @@ const fetchStoryblokStories = node({
           { name: 'page', value: '1' },
           { name: 'starts_with', value: '={{ $json.folder }}' },
           { name: 'contain_component', value: '={{ $json.content_type }}' },
-          { name: 'filter_query[seo.0.languages][all_in_array]', value: '={{ $json.source_locale }}' },
+          // Filter by ORIGINAL language, not by languages-array. seo.0.languages
+          // contains every translation that exists for a story (including the
+          // origin), so all_in_array=ru would also match EN-program articles
+          // that happen to have an RU translation. We want stories where the
+          // editor's content is primary, so filter by originalLanguage.
+          { name: 'filter_query[seo.0.originalLanguage][in]', value: '={{ $json.source_locale }}' },
           { name: 'with_summary', value: '1' },
           { name: 'is_root', value: 'true' },
           { name: 'locale', value: '={{ $json.source_locale }}' },
@@ -581,6 +586,12 @@ const stickyCredentials = sticky(
   { color: 6, width: 380, height: 280 },
 );
 
+const stickyLocaleModel = sticky(
+  '## Locale model (verified 2026-05-05 across 1019 stories)\n\nForm field `source_locale` (`ru` | `en`) selects which **originalLanguage** to scan. The mAPI filter is `seo.0.originalLanguage[in]=<source_locale>`, NOT `seo.0.languages[all_in_array]` — the latter would also catch translation variants of the OTHER source.\n\nReality of immigrantinvest tree:\n- 493 RU originals (all `languages=[\'ru\']`, no cascade exists)\n- 526 EN originals (cascade per `seo[0].languages` — typically [de,en,es,tr] for blog, [ar,de,en,es,ru,tr] for programs)\n\nSearch for source=ru → 493 hits, never need cascade.\nSearch for source=en → 526 hits, cascade is per-story (handled by WF-Cascade, NOT this workflow).\n\nThis workflow only finds candidates and proposes rewrites for ONE locale at a time. Cascade to other locales of the same story is a separate step.',
+  [],
+  { color: 8, width: 480, height: 360 },
+);
+
 export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pre-Process')
   .add(formTrigger)
   .to(initCampaign)
@@ -604,4 +615,5 @@ export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pr
   .add(stickySafety)
   .add(stickyTokenEconomy)
   .add(stickyPipeline)
-  .add(stickyCredentials);
+  .add(stickyCredentials)
+  .add(stickyLocaleModel);

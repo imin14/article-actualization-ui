@@ -45,7 +45,10 @@ The tool replaces editor work that doesn't scale: today the head editor would ha
                                            ▼
                               [n8n: WF-Cascade] (existing workflow,
                                                   triggered explicitly)
-                              translate-3-chunked → ES/DE/TR/AR locales
+                              translate-3-chunked → only into locales that
+                              already exist in seo[0].languages (per-story).
+                              EN-blog typically → DE/ES/TR. EN-program → +AR+RU.
+                              RU originals → no cascade (RU stays RU by design).
 ```
 
 ## Components
@@ -109,7 +112,27 @@ Form trigger with fields: `campaign_topic, campaign_id, keyword, context_descrip
 
 #### WF-Cascade (existing — `Turkey Blocks Generator v3`, ID `lBCSrbEPX7BXx1CR`)
 
-Reused, not rebuilt. Triggered explicitly by editor after manually publishing drafts in Storyblok admin. Translates published RU blocks to ES/DE/TR/AR via `/api/ai-tools/translate-3-chunked/`.
+Reused, not rebuilt. Triggered explicitly by editor after manually publishing drafts in Storyblok admin. Translates published blocks via `/api/ai-tools/translate-3-chunked/`.
+
+**Important — context-aware cascade.** The Storyblok content tree under `immigrantinvest/` (verified 2026-05-05 across 1019 article-stories) is **not** a uniform "RU → all-locales" model. Reality:
+
+| Folder | Origin | Common cascade targets |
+|---|---|---|
+| `new-blog/` (489 stories) | RU | **None** — RU originals are RU-only by design (verified: 0 RU originals have any translations) |
+| `new-blog/` (477 stories) | EN | DE, ES, TR (~85% of EN blog articles); AR almost never; RU rare |
+| `programs/` (49 stories) | EN | DE, ES, TR, AR + RU in ~92% of cases (full 6-locale set) |
+| `programs/` (4 stories) | RU | None |
+
+**Cascade must be context-aware.** Don't fan out to a fixed "ES/DE/TR/AR" list. Instead, for each story:
+
+```javascript
+const targetLocales = (story.content.seo[0].languages || [])
+  .filter(l => l !== story.content.seo[0].originalLanguage);
+// cascade only into locales that already exist for this story.
+// never CREATE a new translation locale — that's a separate workflow.
+```
+
+This means the same campaign reaches different locales depending on which articles are affected: a Portugal Golden Visa rule update touching `programs/portugal-*` cascades to AR+RU; the same campaign touching `new-blog/portugal-*` cascades only to DE/ES/TR.
 
 ### State: n8n Data Tables
 

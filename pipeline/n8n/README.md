@@ -16,7 +16,7 @@ These `.workflow.js` files are the n8n Workflow SDK source for the workflows tha
 
 **Pipeline:**
 1. Form trigger
-2. HTTP `mAPI list stories` (Storyblok read-only)
+2. HTTP `mAPI list stories` (Storyblok read-only) — filtered by `seo.0.originalLanguage[in]=<source_locale>` (NOT `languages[all_in_array]`, which would also match translation variants)
 3. Code `flatten to blocks`
 4. Code `substring filter + paragraph chunking`
 5. SplitInBatches (batch size 10)
@@ -26,6 +26,8 @@ These `.workflow.js` files are the n8n Workflow SDK source for the workflows tha
 9. Code `build campaign_blocks rows`
 10. Data Table insert (campaign_blocks)
 11. Slack notification
+
+**Locale model (verified 2026-05-05):** Storyblok i18n is field-level. One story per article; each story has `seo[0].originalLanguage` (where authored) and `seo[0].languages` (which translations exist). RU originals (493) never cascade — `languages=['ru']` only by design. EN originals (526) cascade per their `seo[0].languages` (typically DE/ES/TR for blog, +AR/RU for programs). This workflow finds candidates for ONE source locale per run; cascade is a separate workflow.
 
 **Token economy:** ~$1.20–$1.50 per 1000 stories scanned. Substring prefilter cuts ~80% of LLM filter cost. LLM prompts only see hit paragraphs (paragraph chunking), not whole blocks.
 
