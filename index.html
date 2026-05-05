@@ -233,18 +233,10 @@
                           <template x-if="block.status === 'proposed' || block.status === 'pending' || block.status === 'error'">
                             <div>
                               <div class="flex flex-wrap gap-2" x-show="!editing">
-                                <button class="btn btn-success" :disabled="busy" @click.stop="onAccept()">
-                                  <span>✓</span> Accept
-                                </button>
-                                <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">
-                                  <span>✎</span> Edit
-                                </button>
-                                <button class="btn btn-neutral" :disabled="busy" @click.stop="openSkipModal()">
-                                  <span>↪</span> Skip
-                                </button>
-                                <button class="btn btn-danger ml-auto" :disabled="busy" @click.stop="openDeleteConfirm()">
-                                  <span>🗑</span> Delete block
-                                </button>
+                                <button class="btn btn-success" :disabled="busy" @click.stop="onAccept()">Accept</button>
+                                <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">Edit</button>
+                                <button class="btn btn-neutral" :disabled="busy" @click.stop="openSkipModal()">Skip</button>
+                                <button class="btn btn-danger ml-auto" :disabled="busy" @click.stop="openDeleteConfirm()">Delete block</button>
                               </div>
 
                               <div x-show="editing"
@@ -357,7 +349,7 @@
                               :disabled="!hasPendingBlocks() || bulkAccepting"
                               @click="bulkAcceptRemaining()">
                         <span x-show="!bulkAccepting">
-                          ✓ Accept all remaining (<span x-text="pendingBlockCount()"></span>)
+                          Accept all remaining (<span x-text="pendingBlockCount()"></span>)
                         </span>
                         <span x-show="bulkAccepting" class="inline-flex items-center gap-2">
                           <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -511,6 +503,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=7"></script>
+  <script type="module" src="app.js?v=8"></script>
 </body>
 </html>

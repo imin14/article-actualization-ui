@@ -160,58 +160,92 @@ html, body {
   font-weight: 500;
   letter-spacing: -0.005em;
   border-radius: 11px;
+  position: relative;
+  border: 1px solid transparent;
   transition:
     background-color var(--imin-duration) var(--imin-easing),
     color var(--imin-duration) var(--imin-easing),
+    border-color var(--imin-duration) var(--imin-easing),
     transform var(--imin-duration-xs) var(--imin-easing),
     box-shadow var(--imin-duration) var(--imin-easing);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
+  will-change: transform, box-shadow;
 }
 
 .btn:disabled { opacity: 0.42; cursor: not-allowed; }
-.btn:not(:disabled):active { transform: scale(0.97); }
+.btn:not(:disabled):hover { transform: translateY(-1px); }
+.btn:not(:disabled):active { transform: translateY(0) scale(0.98); transition-duration: var(--imin-duration-xs); }
 
+/* The only solid filled action: primary (story-level navigation). */
 .btn-primary {
   background: var(--imin-navy);
   color: white;
-  box-shadow: 0 1px 2px rgba(1, 32, 111, 0.18);
+  box-shadow: 0 1px 2px rgba(1, 32, 111, 0.16);
 }
-.btn-primary:not(:disabled):hover { background: var(--imin-navy-dark); }
+.btn-primary:not(:disabled):hover {
+  background: var(--imin-navy-dark);
+  box-shadow: 0 4px 12px -2px rgba(1, 32, 111, 0.24);
+}
 
+/* All other actions use TINTED style: low-saturation bg + colored text.
+   Apple Settings/Mail look — readable but quiet. Hover deepens tint. */
 .btn-success {
-  background: var(--status-green);
-  color: white;
-  box-shadow: 0 1px 2px rgba(52, 199, 89, 0.22);
+  background: var(--status-green-bg);
+  color: var(--status-green-fg);
+  border-color: rgba(52, 199, 89, 0.20);
 }
-.btn-success:not(:disabled):hover { background: #28a745; }
+.btn-success:not(:disabled):hover {
+  background: rgba(52, 199, 89, 0.22);
+  border-color: rgba(52, 199, 89, 0.32);
+  box-shadow: 0 4px 12px -2px rgba(52, 199, 89, 0.18);
+}
 
 .btn-warning {
-  background: var(--status-amber);
-  color: white;
+  background: var(--status-amber-bg);
+  color: var(--status-amber-fg);
+  border-color: rgba(255, 159, 10, 0.22);
 }
-.btn-warning:not(:disabled):hover { background: #ea8e09; }
+.btn-warning:not(:disabled):hover {
+  background: rgba(255, 159, 10, 0.24);
+  border-color: rgba(255, 159, 10, 0.34);
+  box-shadow: 0 4px 12px -2px rgba(255, 159, 10, 0.20);
+}
 
 .btn-neutral {
+  background: var(--imin-fill);
+  color: var(--imin-text-muted);
+  border-color: var(--imin-hairline);
+}
+.btn-neutral:not(:disabled):hover {
   background: var(--imin-fill-2);
   color: var(--imin-text);
+  border-color: var(--imin-hairline-2);
+  box-shadow: 0 4px 12px -2px rgba(60, 60, 67, 0.10);
 }
-.btn-neutral:not(:disabled):hover { background: rgba(120, 120, 128, 0.22); }
 
 .btn-danger {
-  background: var(--status-red);
-  color: white;
-  box-shadow: 0 1px 2px rgba(255, 59, 48, 0.18);
+  background: var(--status-red-bg);
+  color: var(--status-red-fg);
+  border-color: rgba(255, 59, 48, 0.20);
 }
-.btn-danger:not(:disabled):hover { background: #e0352b; }
+.btn-danger:not(:disabled):hover {
+  background: rgba(255, 59, 48, 0.18);
+  border-color: rgba(255, 59, 48, 0.32);
+  box-shadow: 0 4px 12px -2px rgba(255, 59, 48, 0.18);
+}
 
 .btn-ghost {
   background: var(--imin-fill);
   color: var(--imin-text);
+  border-color: transparent;
 }
-.btn-ghost:hover { background: var(--imin-fill-2); }
+.btn-ghost:hover {
+  background: var(--imin-fill-2);
+  border-color: var(--imin-hairline);
+}
 
 .btn-link {
   background: transparent;
