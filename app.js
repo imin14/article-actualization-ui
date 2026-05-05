@@ -130,6 +130,12 @@ window.appRoot = function () {
       }
       try {
         await this.refresh();
+        // Background-load campaigns list so the header's prev/next campaign
+        // buttons have something to navigate. Failures are silent — they only
+        // affect cross-campaign nav, not the current campaign view.
+        if (this.apiMode === 'real') {
+          this.loadCampaigns().catch(() => {});
+        }
       } catch (e) {
         if (this.apiMode === 'real' && isAuthFailure(e)) {
           handleAuthFailure();
@@ -189,6 +195,35 @@ window.appRoot = function () {
     goToCampaigns() {
       this.screen = 'campaigns';
       if (!this.campaigns.length) this.loadCampaigns();
+    },
+
+    // ─── Drill-in / drill-out (матрёшка) navigation ─────────────
+    // Three nested levels: Campaigns → Stories → Blocks. drillUp() unwinds
+    // by one level; drillDown() opens the focused (or first) child item.
+    drillUp() {
+      if (this.screen === 'story') { this.goToOverview(); return; }
+      if (this.screen === 'overview' || this.screen === 'done') { this.goToCampaigns(); return; }
+    },
+    drillDown() {
+      if (this.screen === 'campaigns') {
+        const c = this.campaigns && this.campaigns[0];
+        if (c) this.openCampaign(c.id);
+        return;
+      }
+      if (this.screen === 'overview') {
+        const target = this.focusedStoryId
+          || (this.groups && this.groups[0] && this.groups[0].story_id);
+        if (target) this.goToStory(target);
+        return;
+      }
+      if (this.screen === 'story') {
+        // No nested screen for individual blocks — just focus the next block.
+        const blocks = this.currentStoryBlocks;
+        if (!blocks.length) return;
+        const idx = blocks.findIndex(b => b.row_id === this.focusedRowId);
+        const next = idx < 0 ? blocks[0] : blocks[Math.min(idx + 1, blocks.length - 1)];
+        if (next) this._moveFocus(next.row_id, 'block');
+      }
     },
 
     /**
