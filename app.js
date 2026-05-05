@@ -42,7 +42,7 @@ window.appRoot = function () {
     globalError: null,
     state: null,        // CampaignState from API
     groups: [],         // grouped by story
-    screen: 'overview', // 'overview' | 'story' | 'done'
+    screen: 'overview', // 'overview' | 'story' | 'done' | 'search'
     currentStoryId: null,
 
     // Keyboard shortcut state
@@ -85,6 +85,10 @@ window.appRoot = function () {
     goToOverview() {
       this.currentStoryId = null;
       this.screen = 'overview';
+    },
+
+    goToSearch() {
+      this.screen = 'search';
     },
 
     async submitAction(payload) {
@@ -694,9 +698,189 @@ window.blockActions = function (rowId) {
 // Alpine via the module and starting it explicitly avoids the race condition
 // where Alpine's auto-start fires before the ESM imports resolve and leaves
 // every `x-data="appRoot()"` bound to an empty {} scope.
+window.searchScreen = function () {
+  return {
+    /**
+     * Phase-1 search form. Mirrors the n8n WF-Search-PreProcess form
+     * trigger fields. In real-mode (when ?api=... is set) submission
+     * POSTs to /webhook/search-trigger and returns immediately with a
+     * queued status. The full pipeline runs in background and Slack-pings
+     * when ready.
+     */
+    form: {
+      campaign_topic: '',
+      campaign_id: '',
+      keyword: '',
+      context_description: '',
+      source_locale: 'ru',
+      folder: 'immigrantinvest/new-blog',
+      content_type: 'flatArticle',
+      rewrite_prompt: '',
+      dry_run: true,
+    },
+
+    submitting: false,
+    submitted: false,
+    queuedCampaignId: null,
+    queuedAt: null,
+    isMock: API_MODE !== 'real',
+    progress: {
+      stage: 'idle', // 'idle' | 'queued' | 'fetching' | 'filtering' | 'rewriting' | 'done'
+      stories_scanned: 0,
+      blocks_scanned: 0,
+      hits_after_substring: 0,
+      hits_after_llm_filter: 0,
+      proposed: 0,
+    },
+    error: null,
+
+    /** Generate a default campaign_id from topic + today, slug-style. */
+    suggestedCampaignId() {
+      const topic = (this.form.campaign_topic || '').toLowerCase();
+      const slug = topic
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      const date = new Date().toISOString().slice(0, 10);
+      return `cmp-${slug || 'campaign'}-${date}`;
+    },
+
+    canSubmit() {
+      return this.form.campaign_topic.trim().length >= 3
+          && this.form.keyword.trim().length >= 1
+          && this.form.context_description.trim().length >= 10
+          && this.form.rewrite_prompt.trim().length >= 10
+          && !this.submitting;
+    },
+
+    fillExample() {
+      this.form.campaign_topic = 'Portugal Golden Visa: 5 → 10 years';
+      this.form.keyword = '5';
+      this.form.context_description = 'Mention of "5 years" specifically as the residency period required to apply for Portuguese citizenship via naturalisation. Ignore other 5-year mentions (program duration, statistics).';
+      this.form.source_locale = 'ru';
+      this.form.folder = 'immigrantinvest/new-blog';
+      this.form.rewrite_prompt = 'Update content where Portugal Golden Visa requires 10 years (not 5) for citizenship eligibility. Adjust related context, FAQ, timelines. Sections about possible future law changes should be reframed as already-in-effect facts.';
+    },
+
+    reset() {
+      this.submitting = false;
+      this.submitted = false;
+      this.progress = { stage: 'idle', stories_scanned: 0, blocks_scanned: 0, hits_after_substring: 0, hits_after_llm_filter: 0, proposed: 0 };
+      this.error = null;
+    },
+
+    /**
+     * Mock submission. Simulates the four pipeline phases with realistic
+     * latencies and counters so the operator can preview the experience.
+     * Real wiring will POST the form to a new n8n webhook that triggers
+     * WF-Search-PreProcess.
+     */
+    async submit() {
+      if (!this.canSubmit()) return;
+      if (!this.form.campaign_id) this.form.campaign_id = this.suggestedCampaignId();
+
+      this.submitting = true;
+      this.error = null;
+      this.queuedCampaignId = null;
+      this.queuedAt = null;
+
+      try {
+        if (API_MODE === 'real') {
+          await this._realSubmit();
+        } else {
+          await this._mockSubmit();
+        }
+        this.submitted = true;
+      } catch (e) {
+        this.error = String(e.message || e);
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    /**
+     * Real mode — POST form to n8n webhook. Returns immediately when
+     * n8n responds with { queued: true, campaign_id, started_at }.
+     * The pipeline (mAPI → substring → LLM filter → LLM rewrite →
+     * Data Table insert → Slack ping) runs in the background.
+     */
+    async _realSubmit() {
+      this.progress.stage = 'queued';
+      const url = `${API_BASE_URL}/webhook/search-trigger`;
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 30000);
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...this.form, t: API_TOKEN }),
+          signal: ctrl.signal,
+        });
+      } catch (e) {
+        if (e.name === 'AbortError') throw new Error('Search trigger timed out after 30s. n8n may be cold-starting — try again.');
+        throw new Error(`Network error: ${e.message}`);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { error: text || `HTTP ${res.status}` }; }
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Search trigger failed (HTTP ${res.status})`);
+      }
+      this.queuedCampaignId = data.campaign_id || this.form.campaign_id;
+      this.queuedAt = data.started_at || new Date().toISOString();
+    },
+
+    /** Mock mode — simulates the four pipeline phases. Used when no ?api=. */
+    async _mockSubmit() {
+      this.progress = { stage: 'fetching', stories_scanned: 0, blocks_scanned: 0, hits_after_substring: 0, hits_after_llm_filter: 0, proposed: 0 };
+      await this._countUpTo('stories_scanned', 487, 1500);
+      this.progress.blocks_scanned = 487 * 52;
+      this.progress.stage = 'filtering';
+      await new Promise(r => setTimeout(r, 200));
+      await this._countUpTo('hits_after_substring', 4827, 800);
+      await new Promise(r => setTimeout(r, 200));
+      await this._countUpTo('hits_after_llm_filter', 312, 1800);
+      this.progress.stage = 'rewriting';
+      await new Promise(r => setTimeout(r, 200));
+      await this._countUpTo('proposed', 312, 2200);
+      this.progress.stage = 'done';
+      this.queuedCampaignId = this.form.campaign_id;
+      this.queuedAt = new Date().toISOString();
+    },
+
+    /** URL pointing the SPA at the campaign that was just queued. */
+    reviewQueueUrl() {
+      if (!this.queuedCampaignId) return null;
+      const u = new URL(window.location.href);
+      u.searchParams.set('campaign', this.queuedCampaignId);
+      return u.toString();
+    },
+
+    _countUpTo(field, target, durationMs) {
+      return new Promise(resolve => {
+        const start = performance.now();
+        const tick = (now) => {
+          const t = Math.min(1, (now - start) / durationMs);
+          // ease-out
+          const eased = 1 - Math.pow(1 - t, 3);
+          this.progress[field] = Math.round(target * eased);
+          if (t < 1) requestAnimationFrame(tick);
+          else { this.progress[field] = target; resolve(); }
+        };
+        requestAnimationFrame(tick);
+      });
+    },
+  };
+};
+
 Alpine.data('appRoot', window.appRoot);
 Alpine.data('overviewScreen', window.overviewScreen);
 Alpine.data('storyScreen', window.storyScreen);
 Alpine.data('blockCard', window.blockCard);
 Alpine.data('blockActions', window.blockActions);
+Alpine.data('searchScreen', window.searchScreen);
 Alpine.start();

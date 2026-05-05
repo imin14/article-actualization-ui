@@ -8,6 +8,8 @@ import {
   nextBatch,
   languageModel,
   outputParser,
+  ifElse,
+  expr,
 } from '@n8n/workflow-sdk';
 
 const formTrigger = trigger({
@@ -49,6 +51,209 @@ const formTrigger = trigger({
   }],
 });
 
+// SPA-driven webhook trigger (POST). Runs in parallel to formTrigger;
+// both feed initCampaign which already accepts the same field set.
+// CORS preflight (OPTIONS) is auto-handled by n8n when allowedOrigins is set
+// on the POST trigger — adding a separate OPTIONS trigger on the same path
+// causes a path-collision 500.
+const searchWebhook = trigger({
+  type: 'n8n-nodes-base.webhook',
+  version: 2.1,
+  config: {
+    name: 'Search Webhook (SPA)',
+    position: [0, 200],
+    parameters: {
+      httpMethod: 'POST',
+      path: 'search-trigger',
+      responseMode: 'responseNode',
+      options: {
+        allowedOrigins: 'https://imin.github.io,http://localhost:8080',
+      },
+    },
+  },
+  output: [{
+    body: {
+      campaign_topic: 'Portugal Golden Visa: 5 → 10 years',
+      campaign_id: '',
+      keyword: '5',
+      context_description: 'Mention of 5 years for Portugal citizenship',
+      source_locale: 'ru',
+      folder: 'immigrantinvest/new-blog',
+      content_type: 'flatArticle',
+      rewrite_prompt: 'Update content where Portugal Golden Visa requires 10 years (not 5)...',
+      dry_run: true,
+      t: 'dev-token-change-me',
+    },
+    headers: { origin: 'https://imin.github.io' },
+  }],
+});
+
+// Validate auth + normalise webhook payload to the same shape initCampaign expects.
+// Also computes __cors_origin (reflected origin if whitelisted) so downstream
+// Respond nodes can emit a single Access-Control-Allow-Origin header.
+const validateWebhookInput = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Validate webhook auth + payload',
+    position: [240, 200],
+    parameters: {
+      mode: 'runOnceForAllItems',
+      language: 'javaScript',
+      jsCode: `const EXPECTED_TOKEN = 'dev-token-change-me';
+const ALLOWED_ORIGINS = ['https://imin.github.io', 'http://localhost:8080'];
+const DEFAULT_ORIGIN = 'https://imin.github.io';
+const raw = $input.first().json || {};
+const body = raw.body || raw;
+const headers = raw.headers || {};
+const originHeader = headers.origin || headers.Origin || '';
+const corsOrigin = ALLOWED_ORIGINS.indexOf(originHeader) >= 0 ? originHeader : DEFAULT_ORIGIN;
+const authHeader = headers.authorization || headers.Authorization || '';
+const t = (body.t || authHeader.replace(/^Bearer\\s+/i, '') || '').trim();
+if (t !== EXPECTED_TOKEN) {
+  return [{ json: { __error: 'unauthorized', __status: 401, __cors_origin: corsOrigin } }];
+}
+const required = ['campaign_topic', 'keyword', 'context_description', 'rewrite_prompt'];
+const missing = required.filter(k => !body[k] || String(body[k]).trim() === '');
+if (missing.length) {
+  return [{ json: { __error: 'missing fields: ' + missing.join(', '), __status: 400, __cors_origin: corsOrigin } }];
+}
+const sourceLocale = String(body.source_locale || 'ru').trim();
+function slugify(s) { return s.toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+const today = new Date().toISOString().slice(0, 10);
+let campaignId = String(body.campaign_id || '').trim();
+if (!campaignId) campaignId = 'cmp-' + slugify(String(body.campaign_topic)) + '-' + today;
+return [{ json: {
+  campaign_topic: body.campaign_topic,
+  campaign_id: campaignId,
+  keyword: body.keyword,
+  context_description: body.context_description,
+  source_locale: sourceLocale,
+  folder: body.folder || '',
+  content_type: body.content_type || 'flatArticle',
+  rewrite_prompt: body.rewrite_prompt,
+  dry_run: body.dry_run !== false,
+  __cors_origin: corsOrigin,
+} }];`,
+    },
+  },
+  output: [{
+    campaign_topic: 'Portugal Golden Visa: 5 → 10 years',
+    campaign_id: 'cmp-portugal-golden-visa-2026-05-04',
+    keyword: '5',
+    context_description: 'Mention of 5 years for Portugal citizenship',
+    source_locale: 'ru',
+    folder: 'immigrantinvest/new-blog',
+    content_type: 'flatArticle',
+    rewrite_prompt: 'Update content...',
+    dry_run: true,
+    __cors_origin: 'https://imin.github.io',
+  }],
+});
+
+// Branch on whether validateWebhookInput emitted an error.
+const checkAuth = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Auth ok?',
+    position: [480, 200],
+    parameters: {
+      conditions: {
+        combinator: 'and',
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 },
+        conditions: [{
+          leftValue: expr('{{ !$json.__error }}'),
+          rightValue: '',
+          operator: { type: 'boolean', operation: 'true', singleValue: true },
+        }],
+      },
+    },
+  },
+});
+
+// Success branch: respond with { queued: true, campaign_id, started_at } + CORS,
+// then continue to initCampaign so the rest of the pipeline runs in the background.
+const respondQueued = node({
+  type: 'n8n-nodes-base.respondToWebhook',
+  version: 1.5,
+  config: {
+    name: 'Respond: queued',
+    position: [720, 100],
+    parameters: {
+      respondWith: 'json',
+      responseBody: expr('{{ JSON.stringify({ queued: true, campaign_id: $json.campaign_id || "", started_at: new Date().toISOString() }) }}'),
+      options: {
+        responseHeaders: {
+          entries: [
+            { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin.github.io" }}') },
+            { name: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+            { name: 'Access-Control-Allow-Methods', value: 'POST, OPTIONS' },
+            { name: 'Content-Type', value: 'application/json' },
+          ],
+        },
+      },
+    },
+  },
+  output: [{ ok: true }],
+});
+
+// Error branch: respond with the validator's error message + status code + CORS.
+const respondError = node({
+  type: 'n8n-nodes-base.respondToWebhook',
+  version: 1.5,
+  config: {
+    name: 'Respond: error',
+    position: [720, 300],
+    parameters: {
+      respondWith: 'json',
+      responseBody: expr('{{ JSON.stringify({ error: $json.__error || "bad request" }) }}'),
+      options: {
+        responseCode: expr('{{ $json.__status || 400 }}'),
+        responseHeaders: {
+          entries: [
+            { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin.github.io" }}') },
+            { name: 'Content-Type', value: 'application/json' },
+          ],
+        },
+      },
+    },
+  },
+  output: [{ ok: false }],
+});
+
+// Strip the helper field __cors_origin before handing the payload to initCampaign,
+// so the existing form-trigger pipeline keeps working unchanged downstream.
+const stripCorsField = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Strip __cors_origin',
+    position: [960, 100],
+    parameters: {
+      mode: 'runOnceForAllItems',
+      language: 'javaScript',
+      jsCode: `const items = $input.all();
+const validated = $('Validate webhook auth + payload').first().json;
+const out = Object.assign({}, validated);
+delete out.__cors_origin;
+delete out.__error;
+delete out.__status;
+return [{ json: out }];`,
+    },
+  },
+  output: [{
+    campaign_topic: 'Portugal Golden Visa: 5 → 10 years',
+    campaign_id: 'cmp-portugal-golden-visa-2026-05-04',
+    keyword: '5',
+    context_description: 'Mention of 5 years for Portugal citizenship',
+    source_locale: 'ru',
+    folder: 'immigrantinvest/new-blog',
+    content_type: 'flatArticle',
+    rewrite_prompt: 'Update content...',
+    dry_run: true,
+  }],
+});
+
 const initCampaign = node({
   type: 'n8n-nodes-base.code',
   version: 2,
@@ -58,28 +263,27 @@ const initCampaign = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode:
-        'const SAFETY_DRY_RUN = true;\n' +
-        'const item = $input.first().json;\n' +
-        'const topic = String(item.campaign_topic || "").trim();\n' +
-        'if (!topic) throw new Error("campaign_topic is required");\n' +
-        'const keyword = String(item.keyword || "").trim();\n' +
-        'if (!keyword) throw new Error("keyword is required");\n' +
-        'const contextDescription = String(item.context_description || "").trim();\n' +
-        'const rewritePrompt = String(item.rewrite_prompt || "").trim();\n' +
-        'if (!contextDescription) throw new Error("context_description is required");\n' +
-        'if (!rewritePrompt) throw new Error("rewrite_prompt is required");\n' +
-        'const sourceLocale = String(item.source_locale || "ru").trim();\n' +
-        'const folder = String(item.folder || "").trim();\n' +
-        'const contentType = String(item.content_type || "article").trim();\n' +
-        'const userChoseDryRun = Array.isArray(item.dry_run) ? item.dry_run.length > 0 : Boolean(item.dry_run);\n' +
-        'const dryRunEffective = SAFETY_DRY_RUN || userChoseDryRun;\n' +
-        'function slugify(s) { return s.toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40); }\n' +
-        'const today = new Date().toISOString().slice(0, 10);\n' +
-        'let campaignId = String(item.campaign_id || "").trim();\n' +
-        'if (!campaignId) campaignId = `cmp-${slugify(topic)}-${today}`;\n' +
-        'const startedAt = new Date().toISOString();\n' +
-        'return [{ json: { safety_dry_run: SAFETY_DRY_RUN, dry_run_effective: dryRunEffective, campaign_id: campaignId, campaign_topic: topic, campaign_started_at: startedAt, keyword: keyword, keyword_lc: keyword.toLowerCase(), context_description: contextDescription, rewrite_prompt: rewritePrompt, source_locale: sourceLocale, folder: folder, content_type: contentType } }];\n',
+      jsCode: `const SAFETY_DRY_RUN = true;
+const item = $input.first().json;
+const topic = String(item.campaign_topic || "").trim();
+if (!topic) throw new Error("campaign_topic is required");
+const keyword = String(item.keyword || "").trim();
+if (!keyword) throw new Error("keyword is required");
+const contextDescription = String(item.context_description || "").trim();
+const rewritePrompt = String(item.rewrite_prompt || "").trim();
+if (!contextDescription) throw new Error("context_description is required");
+if (!rewritePrompt) throw new Error("rewrite_prompt is required");
+const sourceLocale = String(item.source_locale || "ru").trim();
+const folder = String(item.folder || "").trim();
+const contentType = String(item.content_type || "article").trim();
+const userChoseDryRun = Array.isArray(item.dry_run) ? item.dry_run.length > 0 : Boolean(item.dry_run);
+const dryRunEffective = SAFETY_DRY_RUN || userChoseDryRun;
+function slugify(s) { return s.toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40); }
+const today = new Date().toISOString().slice(0, 10);
+let campaignId = String(item.campaign_id || "").trim();
+if (!campaignId) campaignId = \`cmp-\${slugify(topic)}-\${today}\`;
+const startedAt = new Date().toISOString();
+return [{ json: { safety_dry_run: SAFETY_DRY_RUN, dry_run_effective: dryRunEffective, campaign_id: campaignId, campaign_topic: topic, campaign_started_at: startedAt, keyword: keyword, keyword_lc: keyword.toLowerCase(), context_description: contextDescription, rewrite_prompt: rewritePrompt, source_locale: sourceLocale, folder: folder, content_type: contentType } }];`,
     },
   },
   output: [{
@@ -114,11 +318,11 @@ const fetchStoryblokStories = node({
           { name: 'page', value: '1' },
           { name: 'starts_with', value: '={{ $json.folder }}' },
           { name: 'contain_component', value: '={{ $json.content_type }}' },
-          // Filter by ORIGINAL language, not by languages-array. seo.0.languages
-          // contains every translation that exists for a story (including the
-          // origin), so all_in_array=ru would also match EN-program articles
-          // that happen to have an RU translation. We want stories where the
-          // editor's content is primary, so filter by originalLanguage.
+          // Filter by ORIGINAL language. seo.0.languages contains every translation
+          // that exists for a story (including the origin), so all_in_array=ru would
+          // also match EN-program articles that happen to have an RU translation.
+          // We want stories where the editor's content is primary, so filter by
+          // originalLanguage.
           { name: 'filter_query[seo.0.originalLanguage][in]', value: '={{ $json.source_locale }}' },
           { name: 'with_summary', value: '1' },
           { name: 'is_root', value: 'true' },
@@ -142,66 +346,65 @@ const flattenAndSubstringFilter = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode:
-        'const meta = $("Init Campaign Meta").first().json;\n' +
-        'const keywordLc = meta.keyword_lc;\n' +
-        'const upstream = $input.first().json || {};\n' +
-        'const stories = Array.isArray(upstream.stories) ? upstream.stories : [];\n' +
-        'function walkLeaves(obj, prefix, out) {\n' +
-        '  if (obj === null || obj === undefined) return;\n' +
-        '  if (typeof obj === "string" || typeof obj === "number") { out.push({ path: prefix, value: String(obj) }); return; }\n' +
-        '  if (Array.isArray(obj)) { for (let i = 0; i < obj.length; i++) walkLeaves(obj[i], prefix ? `${prefix}.${i}` : String(i), out); return; }\n' +
-        '  if (typeof obj === "object") { for (const k of Object.keys(obj)) { if (k === "_uid" || k === "_editable" || k === "component") continue; walkLeaves(obj[k], prefix ? `${prefix}.${k}` : k, out); } }\n' +
-        '}\n' +
-        'function walkBlocks(arr, prefix, out) {\n' +
-        '  if (!Array.isArray(arr)) return;\n' +
-        '  for (let i = 0; i < arr.length; i++) {\n' +
-        '    const b = arr[i];\n' +
-        '    if (!b || typeof b !== "object") continue;\n' +
-        '    const path = prefix ? `${prefix}[${i}]` : `body[${i}]`;\n' +
-        '    if (b._uid && b.component) out.push({ _uid: b._uid, component: b.component, path, payload: b });\n' +
-        '    for (const k of Object.keys(b)) { if (Array.isArray(b[k]) && b[k].length && typeof b[k][0] === "object") walkBlocks(b[k], `${path}.${k}`, out); }\n' +
-        '  }\n' +
-        '}\n' +
-        'function paragraphContext(text, kwLc) {\n' +
-        '  const paras = String(text).split(/\\n\\s*\\n/);\n' +
-        '  const hits = [];\n' +
-        '  for (let i = 0; i < paras.length; i++) {\n' +
-        '    if (paras[i].toLowerCase().includes(kwLc)) {\n' +
-        '      const start = Math.max(0, i - 1);\n' +
-        '      const end = Math.min(paras.length - 1, i + 1);\n' +
-        '      hits.push({ para_index: i, context: paras.slice(start, end + 1).join("\\n\\n") });\n' +
-        '    }\n' +
-        '  }\n' +
-        '  return hits;\n' +
-        '}\n' +
-        'const out = [];\n' +
-        'let totalBlocks = 0;\n' +
-        'for (const story of stories) {\n' +
-        '  if (!story || !story.content) continue;\n' +
-        '  const blocks = [];\n' +
-        '  walkBlocks(story.content.body, "body", blocks);\n' +
-        '  totalBlocks += blocks.length;\n' +
-        '  for (const block of blocks) {\n' +
-        '    const leaves = [];\n' +
-        '    walkLeaves(block.payload, "", leaves);\n' +
-        '    const matchedFields = [];\n' +
-        '    const fieldHits = {};\n' +
-        '    for (const leaf of leaves) {\n' +
-        '      if (typeof leaf.value !== "string") continue;\n' +
-        '      if (!leaf.value.toLowerCase().includes(keywordLc)) continue;\n' +
-        '      const trimmed = leaf.value.trim();\n' +
-        '      if (/^https?:\\/\\//i.test(trimmed)) continue;\n' +
-        '      if (/^\\d+(?:[.,]\\d+)?$/.test(trimmed)) continue;\n' +
-        '      matchedFields.push(leaf.path);\n' +
-        '      fieldHits[leaf.path] = paragraphContext(leaf.value, keywordLc);\n' +
-        '    }\n' +
-        '    if (matchedFields.length === 0) continue;\n' +
-        '    out.push({ json: { story_id: String(story.id || ""), story_full_slug: story.full_slug || story.slug || "", story_name: story.name || "", block_uid: block._uid, block_component: block.component, block_path: block.path, affected_fields: matchedFields, field_hits: fieldHits, original_payload: block.payload } });\n' +
-        '  }\n' +
-        '}\n' +
-        'if (out.length === 0) return [{ json: { __empty: true, __debug: { stories_scanned: stories.length, blocks_scanned: totalBlocks, keyword: meta.keyword } } }];\n' +
-        'return out;\n',
+      jsCode: `const meta = $("Init Campaign Meta").first().json;
+const keywordLc = meta.keyword_lc;
+const upstream = $input.first().json || {};
+const stories = Array.isArray(upstream.stories) ? upstream.stories : [];
+function walkLeaves(obj, prefix, out) {
+  if (obj === null || obj === undefined) return;
+  if (typeof obj === "string" || typeof obj === "number") { out.push({ path: prefix, value: String(obj) }); return; }
+  if (Array.isArray(obj)) { for (let i = 0; i < obj.length; i++) walkLeaves(obj[i], prefix ? \`\${prefix}.\${i}\` : String(i), out); return; }
+  if (typeof obj === "object") { for (const k of Object.keys(obj)) { if (k === "_uid" || k === "_editable" || k === "component") continue; walkLeaves(obj[k], prefix ? \`\${prefix}.\${k}\` : k, out); } }
+}
+function walkBlocks(arr, prefix, out) {
+  if (!Array.isArray(arr)) return;
+  for (let i = 0; i < arr.length; i++) {
+    const b = arr[i];
+    if (!b || typeof b !== "object") continue;
+    const path = prefix ? \`\${prefix}[\${i}]\` : \`body[\${i}]\`;
+    if (b._uid && b.component) out.push({ _uid: b._uid, component: b.component, path, payload: b });
+    for (const k of Object.keys(b)) { if (Array.isArray(b[k]) && b[k].length && typeof b[k][0] === "object") walkBlocks(b[k], \`\${path}.\${k}\`, out); }
+  }
+}
+function paragraphContext(text, kwLc) {
+  const paras = String(text).split(/\\n\\s*\\n/);
+  const hits = [];
+  for (let i = 0; i < paras.length; i++) {
+    if (paras[i].toLowerCase().includes(kwLc)) {
+      const start = Math.max(0, i - 1);
+      const end = Math.min(paras.length - 1, i + 1);
+      hits.push({ para_index: i, context: paras.slice(start, end + 1).join("\\n\\n") });
+    }
+  }
+  return hits;
+}
+const out = [];
+let totalBlocks = 0;
+for (const story of stories) {
+  if (!story || !story.content) continue;
+  const blocks = [];
+  walkBlocks(story.content.body, "body", blocks);
+  totalBlocks += blocks.length;
+  for (const block of blocks) {
+    const leaves = [];
+    walkLeaves(block.payload, "", leaves);
+    const matchedFields = [];
+    const fieldHits = {};
+    for (const leaf of leaves) {
+      if (typeof leaf.value !== "string") continue;
+      if (!leaf.value.toLowerCase().includes(keywordLc)) continue;
+      const trimmed = leaf.value.trim();
+      if (/^https?:\\/\\//i.test(trimmed)) continue;
+      if (/^\\d+(?:[.,]\\d+)?$/.test(trimmed)) continue;
+      matchedFields.push(leaf.path);
+      fieldHits[leaf.path] = paragraphContext(leaf.value, keywordLc);
+    }
+    if (matchedFields.length === 0) continue;
+    out.push({ json: { story_id: String(story.id || ""), story_full_slug: story.full_slug || story.slug || "", story_name: story.name || "", block_uid: block._uid, block_component: block.component, block_path: block.path, affected_fields: matchedFields, field_hits: fieldHits, original_payload: block.payload } });
+  }
+}
+if (out.length === 0) return [{ json: { __empty: true, __debug: { stories_scanned: stories.length, blocks_scanned: totalBlocks, keyword: meta.keyword } } }];
+return out;`,
     },
   },
   output: [{ story_id: '12345', story_full_slug: 'immigrantinvest/blog/portugal-golden-visa', story_name: 'Portugal Golden Visa', block_uid: 'block-1', block_component: 'text_block', block_path: 'body[0]', affected_fields: ['text'], field_hits: { text: [{ para_index: 0, context: 'Portugal Golden Visa requires 5 years.' }] }, original_payload: { _uid: 'block-1', component: 'text_block', text: 'Portugal Golden Visa requires 5 years.' } }],
@@ -221,12 +424,11 @@ const prepareFilterPayload = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode:
-        'const meta = $("Init Campaign Meta").first().json;\n' +
-        'const items = $input.all().map((it) => it.json).filter(b => !b.__empty);\n' +
-        'if (items.length === 0) return [{ json: { __empty: true, batch: [], meta } }];\n' +
-        'const batch = items.map((b, idx) => ({ index: idx, block_uid: b.block_uid, block_component: b.block_component, affected_fields: b.affected_fields, hit_paragraphs: b.field_hits }));\n' +
-        'return [{ json: { keyword: meta.keyword, context_description: meta.context_description, batch_count: batch.length, batch: batch, __originals: items } }];\n',
+      jsCode: `const meta = $("Init Campaign Meta").first().json;
+const items = $input.all().map((it) => it.json).filter(b => !b.__empty);
+if (items.length === 0) return [{ json: { __empty: true, batch: [], meta } }];
+const batch = items.map((b, idx) => ({ index: idx, block_uid: b.block_uid, block_component: b.block_component, affected_fields: b.affected_fields, hit_paragraphs: b.field_hits }));
+return [{ json: { keyword: meta.keyword, context_description: meta.context_description, batch_count: batch.length, batch: batch, __originals: items } }];`,
     },
   },
   output: [{ keyword: '5', context_description: '5 years', batch_count: 1, batch: [{ index: 0, block_uid: 'block-1' }], __originals: [] }],
@@ -289,24 +491,26 @@ const filterAgent = node({
     parameters: {
       promptType: 'define',
       hasOutputParser: true,
-      text:
-        '=Classify these blocks for relevance to the campaign topic.\n\n' +
-        'Keyword (substring match): {{ $json.keyword }}\n' +
-        'Topic / what the keyword should refer to:\n' +
-        '{{ $json.context_description }}\n\n' +
-        'BATCH ({{ $json.batch_count }} blocks). Each block lists affected_fields and the paragraphs where the keyword appeared (with one paragraph of context above and below):\n' +
-        '{{ JSON.stringify($json.batch) }}\n\n' +
-        'For each block return: index (same), match (true/false), reason (one short sentence). ' +
-        'Return EXACTLY {{ $json.batch_count }} verdicts in input order.',
+      text: `=Classify these blocks for relevance to the campaign topic.
+
+Keyword (substring match): {{ $json.keyword }}
+Topic / what the keyword should refer to:
+{{ $json.context_description }}
+
+BATCH ({{ $json.batch_count }} blocks). Each block lists affected_fields and the paragraphs where the keyword appeared (with one paragraph of context above and below):
+{{ JSON.stringify($json.batch) }}
+
+For each block return: index (same), match (true/false), reason (one short sentence). Return EXACTLY {{ $json.batch_count }} verdicts in input order.`,
       options: {
-        systemMessage:
-          'You are a strict relevance classifier for an editorial mass-update campaign.\n\n' +
-          'A keyword substring search has already pre-filtered candidate blocks. Your job is to decide which keyword hits ACTUALLY refer to the campaign topic.\n\n' +
-          'Rules:\n' +
-          '- A hit is a match only if the surrounding paragraph is genuinely about the topic.\n' +
-          '- Numbers used for unrelated quantities ("5 minutes", "5 stars") are NOT matches.\n' +
-          '- Be strict. False positives waste editorial review time downstream.\n' +
-          '- Always return exactly the requested number of verdicts in the requested order.',
+        systemMessage: `You are a strict relevance classifier for an editorial mass-update campaign.
+
+A keyword substring search has already pre-filtered candidate blocks. Your job is to decide which keyword hits ACTUALLY refer to the campaign topic.
+
+Rules:
+- A hit is a match only if the surrounding paragraph is genuinely about the topic.
+- Numbers used for unrelated quantities ("5 minutes", "5 stars") are NOT matches.
+- Be strict. False positives waste editorial review time downstream.
+- Always return exactly the requested number of verdicts in the requested order.`,
       },
     },
     subnodes: { model: filterModel, outputParser: filterParser },
@@ -324,22 +528,21 @@ const mergeFilterVerdicts = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode:
-        'const upstream = $input.first().json || {};\n' +
-        'const originals = $("Prepare Filter Batch").first().json.__originals || [];\n' +
-        'if (upstream.__empty || originals.length === 0) return [{ json: { __empty: true } }];\n' +
-        'const parsed = upstream.output || upstream;\n' +
-        'const verdicts = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];\n' +
-        'const verdictByIndex = {};\n' +
-        'for (const v of verdicts) verdictByIndex[v.index] = v;\n' +
-        'const kept = [];\n' +
-        'for (let i = 0; i < originals.length; i++) {\n' +
-        '  const v = verdictByIndex[i];\n' +
-        '  if (!v || v.match !== true) continue;\n' +
-        '  kept.push({ json: { ...originals[i], llm_match_reason: String(v.reason || "").slice(0, 500) } });\n' +
-        '}\n' +
-        'if (kept.length === 0) return [{ json: { __empty: true, __dropped_count: originals.length } }];\n' +
-        'return kept;\n',
+      jsCode: `const upstream = $input.first().json || {};
+const originals = $("Prepare Filter Batch").first().json.__originals || [];
+if (upstream.__empty || originals.length === 0) return [{ json: { __empty: true } }];
+const parsed = upstream.output || upstream;
+const verdicts = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];
+const verdictByIndex = {};
+for (const v of verdicts) verdictByIndex[v.index] = v;
+const kept = [];
+for (let i = 0; i < originals.length; i++) {
+  const v = verdictByIndex[i];
+  if (!v || v.match !== true) continue;
+  kept.push({ json: { ...originals[i], llm_match_reason: String(v.reason || "").slice(0, 500) } });
+}
+if (kept.length === 0) return [{ json: { __empty: true, __dropped_count: originals.length } }];
+return kept;`,
     },
   },
   output: [{ story_id: '12345', story_full_slug: 'x', story_name: 'x', block_uid: 'block-1', block_component: 'text_block', block_path: 'body[0]', affected_fields: ['text'], field_hits: {}, original_payload: {}, llm_match_reason: 'directly relevant' }],
@@ -355,12 +558,11 @@ const prepareRewritePayload = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode:
-        'const meta = $("Init Campaign Meta").first().json;\n' +
-        'const items = $input.all().map(i => i.json).filter(b => !b.__empty);\n' +
-        'if (items.length === 0) return [{ json: { __empty: true, batch: [], meta } }];\n' +
-        'const batch = items.map((b, idx) => ({ index: idx, block_uid: b.block_uid, block_component: b.block_component, affected_fields: b.affected_fields, hit_paragraphs: b.field_hits }));\n' +
-        'return [{ json: { rewrite_prompt: meta.rewrite_prompt, keyword: meta.keyword, batch_count: batch.length, batch: batch, __originals: items } }];\n',
+      jsCode: `const meta = $("Init Campaign Meta").first().json;
+const items = $input.all().map(i => i.json).filter(b => !b.__empty);
+if (items.length === 0) return [{ json: { __empty: true, batch: [], meta } }];
+const batch = items.map((b, idx) => ({ index: idx, block_uid: b.block_uid, block_component: b.block_component, affected_fields: b.affected_fields, hit_paragraphs: b.field_hits }));
+return [{ json: { rewrite_prompt: meta.rewrite_prompt, keyword: meta.keyword, batch_count: batch.length, batch: batch, __originals: items } }];`,
     },
   },
   output: [{ rewrite_prompt: 'Update...', keyword: '5', batch_count: 1, batch: [{ index: 0 }], __originals: [] }],
@@ -375,23 +577,24 @@ const rewriteAgent = node({
     parameters: {
       promptType: 'define',
       hasOutputParser: true,
-      text:
-        '=GLOBAL REWRITE INSTRUCTION:\n' +
-        '{{ $json.rewrite_prompt }}\n\n' +
-        'KEYWORD that triggered the match: {{ $json.keyword }}\n\n' +
-        'BATCH ({{ $json.batch_count }} blocks). Each has affected_fields and hit_paragraphs:\n' +
-        '{{ JSON.stringify($json.batch) }}\n\n' +
-        'For each block return: index (same), updated_fields (object — keys are affected_fields, values are the proposed REWRITTEN value of that field). ' +
-        'Return EXACTLY {{ $json.batch_count }} proposals in input order.',
+      text: `=GLOBAL REWRITE INSTRUCTION:
+{{ $json.rewrite_prompt }}
+
+KEYWORD that triggered the match: {{ $json.keyword }}
+
+BATCH ({{ $json.batch_count }} blocks). Each has affected_fields and hit_paragraphs:
+{{ JSON.stringify($json.batch) }}
+
+For each block return: index (same), updated_fields (object — keys are affected_fields, values are the proposed REWRITTEN value of that field). Return EXACTLY {{ $json.batch_count }} proposals in input order.`,
       options: {
-        systemMessage:
-          'You are an expert editorial copywriter producing draft rewrite proposals for a content actualisation campaign.\n\n' +
-          'Rules:\n' +
-          '- Rewrite ONLY the affected paragraph(s). Preserve the rest of each field as-is.\n' +
-          '- Preserve markdown, HTML tags, footnote references like [6], proper nouns, links.\n' +
-          '- Apply the global rewrite instruction faithfully — do not introduce new factual claims it does not authorise.\n' +
-          '- If the keyword appears multiple times in the same field, rewrite each occurrence.\n' +
-          '- Always return exactly the requested number of proposals in the requested order.',
+        systemMessage: `You are an expert editorial copywriter producing draft rewrite proposals for a content actualisation campaign.
+
+Rules:
+- Rewrite ONLY the affected paragraph(s). Preserve the rest of each field as-is.
+- Preserve markdown, HTML tags, footnote references like [6], proper nouns, links.
+- Apply the global rewrite instruction faithfully — do not introduce new factual claims it does not authorise.
+- If the keyword appears multiple times in the same field, rewrite each occurrence.
+- Always return exactly the requested number of proposals in the requested order.`,
       },
     },
     subnodes: { model: rewriteModel, outputParser: rewriteParser },
@@ -409,43 +612,42 @@ const buildRows = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode:
-        'const meta = $("Init Campaign Meta").first().json;\n' +
-        'const upstream = $input.first().json || {};\n' +
-        'const prep = $("Prepare Rewrite Batch").first().json;\n' +
-        'const originals = (prep && prep.__originals) || [];\n' +
-        'if (upstream.__empty || originals.length === 0) return [{ json: { __empty: true } }];\n' +
-        'const parsed = upstream.output || upstream;\n' +
-        'const proposals = Array.isArray(parsed.proposals) ? parsed.proposals : [];\n' +
-        'const proposalByIndex = {};\n' +
-        'for (const p of proposals) proposalByIndex[p.index] = p;\n' +
-        'function setByPath(obj, segs, val) {\n' +
-        '  if (segs.length === 0) return;\n' +
-        '  const seg = segs[0];\n' +
-        '  if (segs.length === 1) { if (Array.isArray(obj)) obj[Number(seg)] = val; else obj[seg] = val; return; }\n' +
-        '  const next = Array.isArray(obj) ? obj[Number(seg)] : obj[seg];\n' +
-        '  if (next && typeof next === "object") setByPath(next, segs.slice(1), val);\n' +
-        '}\n' +
-        'function patchPayload(payload, updatedFields) {\n' +
-        '  const out = JSON.parse(JSON.stringify(payload));\n' +
-        '  for (const fieldPath of Object.keys(updatedFields)) {\n' +
-        '    const newVal = updatedFields[fieldPath];\n' +
-        '    if (typeof newVal !== "string") continue;\n' +
-        '    setByPath(out, fieldPath.split("."), newVal);\n' +
-        '  }\n' +
-        '  return out;\n' +
-        '}\n' +
-        'const out = [];\n' +
-        'for (let i = 0; i < originals.length; i++) {\n' +
-        '  const orig = originals[i];\n' +
-        '  const prop = proposalByIndex[i];\n' +
-        '  if (!prop || !prop.updated_fields) continue;\n' +
-        '  const proposedPayload = patchPayload(orig.original_payload, prop.updated_fields);\n' +
-        '  const rowId = `${meta.campaign_id}__${orig.story_id}__${orig.block_uid}`;\n' +
-        '  out.push({ json: { row_id: rowId, campaign_id: meta.campaign_id, campaign_topic: meta.campaign_topic, campaign_started_at: meta.campaign_started_at, source_locale: meta.source_locale, story_id: orig.story_id, story_full_slug: orig.story_full_slug, story_name: orig.story_name, block_uid: orig.block_uid, block_path: orig.block_path, block_component: orig.block_component, affected_fields: JSON.stringify(orig.affected_fields), original_payload: JSON.stringify(orig.original_payload), llm_match_reason: orig.llm_match_reason || "", proposed_payload: JSON.stringify(proposedPayload), status: "proposed", updated_at: new Date().toISOString() } });\n' +
-        '}\n' +
-        'if (out.length === 0) return [{ json: { __empty: true } }];\n' +
-        'return out;\n',
+      jsCode: `const meta = $("Init Campaign Meta").first().json;
+const upstream = $input.first().json || {};
+const prep = $("Prepare Rewrite Batch").first().json;
+const originals = (prep && prep.__originals) || [];
+if (upstream.__empty || originals.length === 0) return [{ json: { __empty: true } }];
+const parsed = upstream.output || upstream;
+const proposals = Array.isArray(parsed.proposals) ? parsed.proposals : [];
+const proposalByIndex = {};
+for (const p of proposals) proposalByIndex[p.index] = p;
+function setByPath(obj, segs, val) {
+  if (segs.length === 0) return;
+  const seg = segs[0];
+  if (segs.length === 1) { if (Array.isArray(obj)) obj[Number(seg)] = val; else obj[seg] = val; return; }
+  const next = Array.isArray(obj) ? obj[Number(seg)] : obj[seg];
+  if (next && typeof next === "object") setByPath(next, segs.slice(1), val);
+}
+function patchPayload(payload, updatedFields) {
+  const out = JSON.parse(JSON.stringify(payload));
+  for (const fieldPath of Object.keys(updatedFields)) {
+    const newVal = updatedFields[fieldPath];
+    if (typeof newVal !== "string") continue;
+    setByPath(out, fieldPath.split("."), newVal);
+  }
+  return out;
+}
+const out = [];
+for (let i = 0; i < originals.length; i++) {
+  const orig = originals[i];
+  const prop = proposalByIndex[i];
+  if (!prop || !prop.updated_fields) continue;
+  const proposedPayload = patchPayload(orig.original_payload, prop.updated_fields);
+  const rowId = \`\${meta.campaign_id}__\${orig.story_id}__\${orig.block_uid}\`;
+  out.push({ json: { row_id: rowId, campaign_id: meta.campaign_id, campaign_topic: meta.campaign_topic, campaign_started_at: meta.campaign_started_at, source_locale: meta.source_locale, story_id: orig.story_id, story_full_slug: orig.story_full_slug, story_name: orig.story_name, block_uid: orig.block_uid, block_path: orig.block_path, block_component: orig.block_component, affected_fields: JSON.stringify(orig.affected_fields), original_payload: JSON.stringify(orig.original_payload), llm_match_reason: orig.llm_match_reason || "", proposed_payload: JSON.stringify(proposedPayload), status: "proposed", updated_at: new Date().toISOString() } });
+}
+if (out.length === 0) return [{ json: { __empty: true } }];
+return out;`,
     },
   },
   output: [{
@@ -541,14 +743,14 @@ const slackNotify = node({
       select: 'channel',
       channelId: { __rl: true, mode: 'list', value: 'C09KC8MGE4A', cachedResultName: 'translation-reports' },
       messageType: 'text',
-      text:
-        '={{ $(\'Init Campaign Meta\').item.json.dry_run_effective ? \'[DRY-RUN] \' : \'[LIVE] \' }}*Mass Actualization — Campaign Ready for Review*\n' +
-        '*Topic:* {{ $(\'Init Campaign Meta\').item.json.campaign_topic }}\n' +
-        '*Campaign ID:* `{{ $(\'Init Campaign Meta\').item.json.campaign_id }}`\n' +
-        '*Source locale:* `{{ $(\'Init Campaign Meta\').item.json.source_locale }}`\n' +
-        '*Keyword:* `{{ $(\'Init Campaign Meta\').item.json.keyword }}`\n' +
-        '*Mode:* {{ $(\'Init Campaign Meta\').item.json.dry_run_effective ? \'DRY-RUN (no Storyblok writes — review only)\' : \'LIVE (UI accept will publish)\' }}\n\n' +
-        'Open the review UI: https://imin.github.io/article-actualization-ui/?campaign_id={{ $(\'Init Campaign Meta\').item.json.campaign_id }}',
+      text: `={{ $('Init Campaign Meta').item.json.dry_run_effective ? '[DRY-RUN] ' : '[LIVE] ' }}*Mass Actualization — Campaign Ready for Review*
+*Topic:* {{ $('Init Campaign Meta').item.json.campaign_topic }}
+*Campaign ID:* \`{{ $('Init Campaign Meta').item.json.campaign_id }}\`
+*Source locale:* \`{{ $('Init Campaign Meta').item.json.source_locale }}\`
+*Keyword:* \`{{ $('Init Campaign Meta').item.json.keyword }}\`
+*Mode:* {{ $('Init Campaign Meta').item.json.dry_run_effective ? 'DRY-RUN (no Storyblok writes — review only)' : 'LIVE (UI accept will publish)' }}
+
+Open the review UI: https://imin.github.io/article-actualization-ui/?campaign_id={{ $('Init Campaign Meta').item.json.campaign_id }}`,
       otherOptions: { includeLinkToWorkflow: false },
     },
     credentials: { slackApi: newCredential('Slack Bot') },
@@ -557,42 +759,31 @@ const slackNotify = node({
 });
 
 const stickyOverview = sticky(
-  '## WF-Search-PreProcess  (Phase 1 + 1.5)\n\nForm-triggered pipeline that finds Storyblok blocks affected by a campaign topic and pre-computes LLM rewrite proposals.\n\nOutput: rows in the `campaign_blocks` Data Table (id `wgKa7GSxjKjGrwQK`) with `status="proposed"`, ready for editor review via the WF-UIBackend (id `ORKhXHUFSANVF51w`).\n\n**This workflow never writes to Storyblok.** It only reads via mAPI and writes to the internal Data Table.',
+  '## WF-Search-PreProcess  (Phase 1 + 1.5)\n\nForm-triggered pipeline that finds Storyblok blocks affected by a campaign topic and pre-computes LLM rewrite proposals.\n\nOutput: rows in the campaign_blocks Data Table (id wgKa7GSxjKjGrwQK) with status proposed, ready for editor review via the WF-UIBackend (id ORKhXHUFSANVF51w).\n\nThis workflow never writes to Storyblok. It only reads via mAPI and writes to the internal Data Table.',
   [],
   { color: 7, width: 480, height: 240 },
 );
 
 const stickySafety = sticky(
-  '## SAFETY_DRY_RUN = true  (default)\n\nThe constant lives at the top of the **Init Campaign Meta** Code node.\n\nIn this workflow nothing is destructive (read-only mAPI + Data Table inserts), so the flag only:\n- forces the Slack notification into DRY-RUN tone\n- documents intent for symmetry with WF-UIBackend\n\n**Workflow is created INACTIVE.** Activate manually after the Storyblok mAPI token + Gemini + Slack credentials are filled in.',
+  '## SAFETY_DRY_RUN = true  (default)\n\nThe constant lives at the top of the Init Campaign Meta Code node.\n\nIn this workflow nothing is destructive (read-only mAPI + Data Table inserts), so the flag only:\n- forces the Slack notification into DRY-RUN tone\n- documents intent for symmetry with WF-UIBackend',
   [],
   { color: 3, width: 360, height: 280 },
 );
 
-const stickyTokenEconomy = sticky(
-  '## Token Economy (per ~1000 stories ≈ 50K blocks)\n\n**Step 1: Substring filter (JS, no LLM)** — $0\nRemoves ~80% of candidates before any LLM is involved.\n\n**Step 2: LLM filter (Gemini Flash)** — ~$0.60\n~10K hits / 10 per batch = 1K calls × ~200 tokens input × $0.30/M = ~2M tokens × $0.30 = ~$0.60.\n\n**Step 3: LLM rewrite (Gemini Flash)** — ~$0.60\n~5K matches / 10 per batch = 500 calls × ~400 tokens input × $0.30/M = ~2M tokens × $0.30 = ~$0.60.\n\n**Total: ~$1.20–$1.50 per 1000 stories scanned.**\n\nWithout the substring pre-filter: 50K × 200 tokens × $0.30/M = ~$3 just for the filter step. Substring saves ~80%.\n\nOptimisations baked in:\n1. Substring match is JS, not LLM.\n2. Filter prompt sees only hit-paragraphs (paragraph + 1 above/below), not full blocks.\n3. Rewrite prompt sees only hit-paragraphs of affected fields.\n4. Both agents process 10 blocks per call (batched).\n5. Structured output parsers eliminate boilerplate tokens.',
-  [],
-  { color: 5, width: 480, height: 420 },
-);
-
 const stickyPipeline = sticky(
-  '## Pipeline\n\n1. **Form trigger** — campaign meta + search params\n2. **Init Campaign Meta** — normalise input, generate campaign_id, set safety flag\n3. **Storyblok mAPI: List Stories** — single call (per_page=1000) with starts_with + contain_component + locale filter\n4. **Flatten + Substring Filter** — walk content tree, JS-only keyword match, attach hit-paragraphs\n5. **Loop Over Block Batches** (10 at a time): prepare batch → LLM filter → drop non-matches → prepare rewrite batch → LLM rewrite → build rows → Data Table insert → next batch\n6. **Slack: Campaign Ready for Review** — once, after the loop completes',
+  '## Pipeline\n\n1. Form trigger or SPA webhook - campaign meta + search params\n2. Init Campaign Meta - normalise input, generate campaign_id, set safety flag\n3. Storyblok mAPI: List Stories - single call (per_page=1000) with starts_with + contain_component + locale filter\n4. Flatten + Substring Filter - walk content tree, JS-only keyword match, attach hit-paragraphs\n5. Loop Over Block Batches (10 at a time): prepare batch, LLM filter, drop non-matches, prepare rewrite batch, LLM rewrite, build rows, Data Table insert, next batch\n6. Slack: Campaign Ready for Review - once, after the loop completes',
   [],
   { color: 4, width: 480, height: 280 },
 );
 
-const stickyCredentials = sticky(
-  '## Credentials to fill in\n\n- **Storyblok mAPI Token (read-only)** — Header Auth credential. Header name `Authorization`, value is the flat read-only token (Storyblok mAPI does NOT use Bearer prefix).\n- **Google Gemini API** — used by both filter and rewrite agents.\n- **Slack Bot** — same workspace as the Turkey workflow, channel `translation-reports` (id `C09KC8MGE4A`).\n\nThe workflow is INACTIVE by default. Add credentials, then click Activate when ready.',
+const stickyWebhookEntrypoint = sticky(
+  '## SPA webhook entrypoint\n\nPOST /webhook/search-trigger - JSON body with form-trigger fields plus a shared token t.\n\nValidate node returns 401 (bad token) or 400 (missing required field) before hitting the rest of the pipeline. Success path responds immediately with { queued: true, campaign_id, started_at } then continues to Init Campaign Meta in the background.\n\nCORS: imin.github.io and localhost:8080 whitelisted at the n8n trigger level (allowedOrigins). n8n auto-handles OPTIONS preflight on the POST trigger when allowedOrigins is set - NO separate OPTIONS trigger (would cause path-collision 500).\n\nForm trigger remains untouched.',
   [],
-  { color: 6, width: 380, height: 280 },
-);
-
-const stickyLocaleModel = sticky(
-  '## Locale model (verified 2026-05-05 across 1019 stories)\n\nForm field `source_locale` (`ru` | `en`) selects which **originalLanguage** to scan. The mAPI filter is `seo.0.originalLanguage[in]=<source_locale>`, NOT `seo.0.languages[all_in_array]` — the latter would also catch translation variants of the OTHER source.\n\nReality of immigrantinvest tree:\n- 493 RU originals (all `languages=[\'ru\']`, no cascade exists)\n- 526 EN originals (cascade per `seo[0].languages` — typically [de,en,es,tr] for blog, [ar,de,en,es,ru,tr] for programs)\n\nSearch for source=ru → 493 hits, never need cascade.\nSearch for source=en → 526 hits, cascade is per-story (handled by WF-Cascade, NOT this workflow).\n\nThis workflow only finds candidates and proposes rewrites for ONE locale at a time. Cascade to other locales of the same story is a separate step.',
-  [],
-  { color: 8, width: 480, height: 360 },
+  { color: 5, width: 480, height: 320 },
 );
 
 export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pre-Process')
+  // Branch 1: original form-triggered pipeline.
   .add(formTrigger)
   .to(initCampaign)
   .to(fetchStoryblokStories)
@@ -611,9 +802,15 @@ export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pr
       )
       .onDone(slackNotify),
   )
+  // Branch 2: SPA webhook → validate → checkAuth → respondQueued → initCampaign.
+  .add(searchWebhook)
+  .to(validateWebhookInput)
+  .to(
+    checkAuth
+      .onTrue(respondQueued.to(stripCorsField).to(initCampaign))
+      .onFalse(respondError),
+  )
   .add(stickyOverview)
   .add(stickySafety)
-  .add(stickyTokenEconomy)
   .add(stickyPipeline)
-  .add(stickyCredentials)
-  .add(stickyLocaleModel);
+  .add(stickyWebhookEntrypoint);

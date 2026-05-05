@@ -96,7 +96,7 @@
           <!-- ───── Overview ───── -->
           <template x-if="screen === 'overview'">
             <div x-data="overviewScreen()" x-init="init()" class="animate-fade-in">
-              <div class="flex items-end justify-between mb-6">
+              <div class="flex items-end justify-between mb-6 gap-3">
                 <div>
                   <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight">Stories</h1>
                   <div class="text-sm text-[var(--imin-text-muted)] mt-1">
@@ -105,10 +105,18 @@
                     <span class="locale-chip ml-1" x-text="state.campaign.source_locale"></span>
                   </div>
                 </div>
-                <button type="button"
-                        class="help-pill"
-                        title="Keyboard shortcuts (?)"
-                        @click="helpOpen = true">?</button>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-ghost" @click="goToSearch()">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Новая campaign
+                  </button>
+                  <button type="button"
+                          class="help-pill"
+                          title="Keyboard shortcuts (?)"
+                          @click="helpOpen = true">?</button>
+                </div>
               </div>
 
               <ul class="list-stack stagger-fade">
@@ -407,6 +415,278 @@
               </div>
             </div>
           </template>
+
+          <!-- ───── Search / new campaign ───── -->
+          <template x-if="screen === 'search'">
+            <div x-data="searchScreen()" class="animate-fade-in max-w-3xl mx-auto">
+              <button class="inline-flex items-center gap-1.5 text-sm text-[var(--imin-text-muted)] hover:text-[var(--imin-navy)] mb-5 transition-colors"
+                      @click="goToOverview()">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                Назад
+              </button>
+
+              <!-- Form view -->
+              <template x-if="!submitted && !submitting">
+                <div>
+                  <div class="mb-7">
+                    <div class="section-label mb-1">New campaign</div>
+                    <h1 class="story-title">Find affected articles</h1>
+                    <p class="text-sm text-[var(--imin-text-muted)] mt-2">
+                      Запусти поиск кандидатов в Storyblok для массовой актуализации. LLM rewrite предлагается автоматически и попадает в очередь review.
+                    </p>
+                  </div>
+
+                  <div class="card p-6 mb-4">
+                    <div class="flex items-center justify-between mb-4">
+                      <div class="section-label">Campaign meta</div>
+                      <button type="button" class="btn btn-link text-xs" @click="fillExample()">Заполнить примером</button>
+                    </div>
+
+                    <div class="space-y-4">
+                      <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Campaign topic</span>
+                        <input type="text" x-model="form.campaign_topic"
+                               placeholder="Portugal Golden Visa: 5 → 10 years"
+                               class="edit-textarea" style="font-family: inherit;">
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Человеческое имя кампании. Используется в Sheet и Slack.</div>
+                      </label>
+
+                      <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Campaign ID
+                          <span class="text-[var(--imin-text-subtle)] font-normal">(опционально)</span>
+                        </span>
+                        <input type="text" x-model="form.campaign_id"
+                               :placeholder="suggestedCampaignId()"
+                               class="edit-textarea">
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Если пусто — генерится из topic + даты.</div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="card p-6 mb-4">
+                    <div class="section-label mb-4">Search</div>
+
+                    <div class="space-y-4">
+                      <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Keyword</span>
+                        <input type="text" x-model="form.keyword"
+                               placeholder="5"
+                               class="edit-textarea">
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">JS substring match (case-insensitive). Пре-фильтр перед LLM — отсеивает ~80% блоков бесплатно.</div>
+                      </label>
+
+                      <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Context description</span>
+                        <textarea rows="3" x-model="form.context_description"
+                                  placeholder='Mention of "5 years" specifically as the residency period required to apply for Portuguese citizenship via naturalisation.'
+                                  class="edit-textarea" style="font-family: inherit;"></textarea>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Промпт для LLM — определяет какие hits релевантны. Чем точнее, тем меньше false positives.</div>
+                      </label>
+
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label class="block">
+                          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Source locale</span>
+                          <select x-model="form.source_locale" class="edit-textarea" style="font-family: inherit;">
+                            <option value="ru">RU — Russian originals (493 articles)</option>
+                            <option value="en">EN — English originals (526 articles)</option>
+                          </select>
+                          <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Фильтр по seo[0].originalLanguage.</div>
+                        </label>
+
+                        <label class="block">
+                          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Folder
+                            <span class="text-[var(--imin-text-subtle)] font-normal">(опционально)</span>
+                          </span>
+                          <input type="text" x-model="form.folder"
+                                 placeholder="immigrantinvest/new-blog"
+                                 class="edit-textarea">
+                          <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Storyblok starts_with filter.</div>
+                        </label>
+                      </div>
+
+                      <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Content type
+                          <span class="text-[var(--imin-text-subtle)] font-normal">(опционально)</span>
+                        </span>
+                        <input type="text" x-model="form.content_type"
+                               placeholder="flatArticle"
+                               class="edit-textarea">
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="card p-6 mb-4">
+                    <div class="section-label mb-4">Rewrite policy</div>
+                    <label class="block">
+                      <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Global rewrite prompt</span>
+                      <textarea rows="5" x-model="form.rewrite_prompt"
+                                placeholder='Update content where Portugal Golden Visa requires 10 years (not 5) for citizenship eligibility...'
+                                class="edit-textarea" style="font-family: inherit;"></textarea>
+                      <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Этот промпт LLM использует для каждого matched-блока. Editor сможет override через Edit & Accept.</div>
+                    </label>
+                  </div>
+
+                  <div class="card p-6 mb-6">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" x-model="form.dry_run" class="mt-0.5 accent-[var(--imin-navy)] w-4 h-4">
+                      <div>
+                        <div class="text-sm font-medium text-[var(--imin-text)]">Dry-run mode</div>
+                        <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">
+                          Прогон без записи в Storyblok (только в campaign_blocks Data Table). Editor затем review'ит и approves'ит. <strong>Default ON</strong> — снимать только после явного подтверждения.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  <template x-if="error">
+                    <div class="card p-4 mb-4 border-red-200" style="background: rgba(255, 59, 48, 0.06); border-color: rgba(255, 59, 48, 0.22);">
+                      <div class="flex items-start gap-2.5">
+                        <svg class="w-4 h-4 mt-0.5 shrink-0 text-[var(--status-red-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
+                        </svg>
+                        <div class="text-sm text-[var(--status-red-fg)]" x-text="'Не удалось запустить: ' + error"></div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <div class="flex items-center justify-between gap-3">
+                    <button class="btn btn-ghost" @click="goToOverview()">Отмена</button>
+                    <button class="btn btn-primary" :disabled="!canSubmit()" @click="submit()">
+                      Запустить поиск
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Submitting / progress view -->
+              <template x-if="submitting && !submitted">
+                <div class="card p-8">
+                  <div class="flex items-center gap-3 mb-6">
+                    <div class="relative w-10 h-10">
+                      <div class="absolute inset-0 rounded-full border-2 border-[var(--imin-navy-tint)]"></div>
+                      <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--imin-navy)] animate-spin"></div>
+                    </div>
+                    <div>
+                      <div class="font-semibold text-[var(--imin-text)]" x-text="form.campaign_topic || 'Untitled campaign'"></div>
+                      <div class="section-label mt-0.5">
+                        <span x-show="progress.stage === 'queued'">Triggering n8n workflow…</span>
+                        <span x-show="progress.stage === 'fetching'">Fetching Storyblok stories…</span>
+                        <span x-show="progress.stage === 'filtering'">LLM context filter…</span>
+                        <span x-show="progress.stage === 'rewriting'">LLM rewrite proposals…</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Real mode: no granular counters (n8n doesn't stream progress).
+                       Just show a friendly "this will take a while" message. -->
+                  <template x-if="!isMock">
+                    <div class="space-y-3">
+                      <div class="field-card text-sm text-[var(--imin-text-muted)]">
+                        Запускаем pipeline: mAPI fetch → substring filter → LLM context filter → LLM rewrite. Обычно <strong class="text-[var(--imin-text)]">5–15 минут</strong> для всего blog-tree (~1000 stories), может больше при долгом cold start n8n.
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Mock mode: animated counters for design preview -->
+                  <template x-if="isMock">
+                    <div class="space-y-3 stagger-fade">
+                      <div class="field-card flex items-center justify-between">
+                        <span class="text-sm text-[var(--imin-text-muted)]">Stories scanned (Storyblok mAPI)</span>
+                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.stories_scanned"></span>
+                      </div>
+                      <div class="field-card flex items-center justify-between">
+                        <span class="text-sm text-[var(--imin-text-muted)]">Blocks scanned</span>
+                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.blocks_scanned.toLocaleString()"></span>
+                      </div>
+                      <div class="field-card flex items-center justify-between">
+                        <span class="text-sm text-[var(--imin-text-muted)]">After substring filter (no LLM cost)</span>
+                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.hits_after_substring.toLocaleString()"></span>
+                      </div>
+                      <div class="field-card flex items-center justify-between">
+                        <span class="text-sm text-[var(--imin-text-muted)]">After LLM context filter</span>
+                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.hits_after_llm_filter"></span>
+                      </div>
+                      <div class="field-card flex items-center justify-between">
+                        <span class="text-sm text-[var(--imin-text-muted)]">Rewrite proposals generated</span>
+                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.proposed"></span>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="error">
+                    <div class="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3" x-text="error"></div>
+                  </template>
+                </div>
+              </template>
+
+              <!-- Done / Queued view -->
+              <template x-if="submitted">
+                <div class="card p-8 text-center animate-scale-in">
+                  <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--status-green-bg)] flex items-center justify-center">
+                    <svg class="w-6 h-6 text-[var(--status-green-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  </div>
+
+                  <!-- Real mode: queued, pipeline running in background -->
+                  <template x-if="!isMock">
+                    <div>
+                      <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2">Поиск запущен</h2>
+                      <p class="text-sm text-[var(--imin-text-muted)] mb-5">
+                        Pipeline работает в фоне. Slack-уведомление в <code class="font-mono text-xs bg-[var(--imin-fill)] px-1.5 py-0.5 rounded">#translation-reports</code> когда proposals готовы — это 5–15 минут типично.
+                      </p>
+                      <div class="field-card max-w-sm mx-auto mb-6 text-left">
+                        <div class="field-label mb-1">campaign_id</div>
+                        <div class="font-mono text-sm text-[var(--imin-text)] break-all" x-text="queuedCampaignId"></div>
+                        <div class="field-label mt-3 mb-1">queued at</div>
+                        <div class="font-mono text-xs text-[var(--imin-text-muted)]" x-text="queuedAt"></div>
+                      </div>
+                      <div class="flex justify-center gap-2 flex-wrap">
+                        <button class="btn btn-ghost" @click="reset(); goToSearch()">Новая campaign</button>
+                        <a class="btn btn-primary" :href="reviewQueueUrl()">Открыть очередь review →</a>
+                      </div>
+                      <p class="text-xs text-[var(--imin-text-subtle)] mt-4">
+                        Очередь будет пустой пока pipeline не закончит запись в campaign_blocks. Откроется автоматически когда строки появятся.
+                      </p>
+                    </div>
+                  </template>
+
+                  <!-- Mock mode: simulated stats -->
+                  <template x-if="isMock">
+                    <div>
+                      <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2">Search complete</h2>
+                      <p class="text-sm text-[var(--imin-text-muted)] mb-6">
+                        Найдено <strong class="text-[var(--imin-text)]" x-text="progress.proposed"></strong> блоков для review.
+                      </p>
+                      <div class="grid grid-cols-3 gap-3 max-w-md mx-auto mb-6">
+                        <div class="field-card text-center">
+                          <div class="text-xl font-bold tabular-nums text-[var(--imin-text)]" x-text="progress.stories_scanned"></div>
+                          <div class="text-[10px] uppercase font-semibold tracking-wider text-[var(--imin-text-subtle)] mt-1">Stories</div>
+                        </div>
+                        <div class="field-card text-center">
+                          <div class="text-xl font-bold tabular-nums text-[var(--imin-text)]" x-text="progress.hits_after_substring.toLocaleString()"></div>
+                          <div class="text-[10px] uppercase font-semibold tracking-wider text-[var(--imin-text-subtle)] mt-1">Substring hits</div>
+                        </div>
+                        <div class="field-card text-center">
+                          <div class="text-xl font-bold tabular-nums text-[var(--imin-text)]" x-text="progress.proposed"></div>
+                          <div class="text-[10px] uppercase font-semibold tracking-wider text-[var(--imin-text-subtle)] mt-1">Proposals</div>
+                        </div>
+                      </div>
+                      <div class="flex justify-center gap-2">
+                        <button class="btn btn-ghost" @click="reset(); goToSearch()">Новая campaign</button>
+                        <button class="btn btn-primary" @click="goToOverview()">Открыть очередь review →</button>
+                      </div>
+                      <p class="text-xs text-[var(--imin-text-subtle)] mt-4">
+                        <em>Mock-mode: данные не отправлены в n8n. Запусти SPA с <code>?api=&lt;n8n base&gt;&amp;t=&lt;token&gt;</code> для real-mode.</em>
+                      </p>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
         </main>
 
         <!-- Footer with brand -->
@@ -503,6 +783,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=9"></script>
+  <script type="module" src="app.js?v=12"></script>
 </body>
 </html>
