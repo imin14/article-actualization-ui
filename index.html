@@ -6,18 +6,17 @@
   <meta name="referrer" content="no-referrer">
   <title>Mass Actualization</title>
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="stylesheet" href="styles.css">
 
   <script type="importmap">
     {
       "imports": {
-        "diff": "https://cdn.jsdelivr.net/npm/diff@7.0.0/+esm"
+        "diff": "https://cdn.jsdelivr.net/npm/diff@7.0.0/+esm",
+        "alpinejs": "https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/module.esm.min.js"
       }
     }
   </script>
-
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen">
 
@@ -66,16 +65,16 @@
             <div x-data="overviewScreen()" x-init="init()">
               <h1 class="text-xl font-semibold mb-1">Stories</h1>
               <div class="text-sm text-slate-500 mb-4">
-                <span x-text="$root.groups.length"></span> stories,
-                <span x-text="$root.state.progress.total"></span> blocks
+                <span x-text="groups.length"></span> stories,
+                <span x-text="state.progress.total"></span> blocks
               </div>
 
               <ul class="bg-white border border-slate-200 rounded divide-y divide-slate-200">
-                <template x-for="g in $root.groups" :key="g.story_id">
+                <template x-for="g in groups" :key="g.story_id">
                   <li class="hover:bg-slate-50 cursor-pointer"
                       :data-story-id="g.story_id"
-                      :class="{ 'ring-2 ring-blue-400 ring-offset-1 relative z-10': $root.focusedStoryId === g.story_id }"
-                      @click="$root.focusedStoryId = g.story_id; $root.goToStory(g.story_id)">
+                      :class="{ 'ring-2 ring-blue-400 ring-offset-1 relative z-10': focusedStoryId === g.story_id }"
+                      @click="focusedStoryId = g.story_id; goToStory(g.story_id)">
                     <div class="px-4 py-3 flex items-center justify-between gap-4">
                       <div class="min-w-0">
                         <div class="font-medium truncate" x-text="g.story_name"></div>
@@ -101,7 +100,7 @@
           <template x-if="screen === 'story'">
             <div x-data="storyScreen()" x-init="init()">
               <button class="text-sm text-slate-500 hover:text-slate-900 mb-3"
-                      @click="$root.goToOverview()">← все stories</button>
+                      @click="goToOverview()">← все stories</button>
 
               <template x-if="!group">
                 <div class="text-slate-500">Загружаем story...</div>
@@ -116,7 +115,7 @@
                       <button type="button"
                               class="text-xs text-slate-400 hover:text-slate-700 border border-slate-300 rounded-full w-5 h-5 leading-none flex items-center justify-center"
                               title="Keyboard shortcuts (?)"
-                              @click="$root.helpOpen = true">?</button>
+                              @click="helpOpen = true">?</button>
                     </div>
                     <div class="text-xs text-slate-500" x-text="group.story_full_slug"></div>
                   </div>
@@ -125,9 +124,9 @@
                     <template x-for="block in group.blocks" :key="block.row_id">
                       <li class="bg-white border border-slate-200 rounded p-4"
                           :data-row-id="block.row_id"
-                          :class="{ 'ring-2 ring-blue-400 ring-offset-1 relative z-10': $root.focusedRowId === block.row_id }"
-                          @click="$root.focusedRowId = block.row_id"
-                          x-data="blockCard(block)" x-init="init($root)">
+                          :class="{ 'ring-2 ring-blue-400 ring-offset-1 relative z-10': focusedRowId === block.row_id }"
+                          @click="focusedRowId = block.row_id"
+                          x-data="blockCard(block.row_id)" x-init="init()">
                         <div class="flex items-center justify-between mb-2">
                           <div class="text-sm">
                             <span class="font-mono text-slate-500" x-text="block.block_component"></span>
@@ -147,7 +146,7 @@
                             <div class="border border-slate-100 rounded p-3 bg-slate-50">
                               <div class="text-xs font-mono text-slate-500 mb-2" x-text="fieldName"></div>
                               <div class="diff-output text-sm"
-                                   x-html="$root.diffHTML(
+                                   x-html="diffHTML(
                                      block.original_payload[fieldName],
                                      (block.edited_payload && block.edited_payload[fieldName] != null
                                         ? block.edited_payload[fieldName]
@@ -161,7 +160,7 @@
 
                         <!-- Action buttons (filled in Task 9-12) -->
                         <div class="flex flex-wrap gap-2 mt-4"
-                             x-data="blockActions(block)" x-init="init($root)"
+                             x-data="blockActions(block.row_id)" x-init="init()"
                              @row-action.window="onRowAction($event.detail)">
 
                           <template x-if="block.status === 'proposed' || block.status === 'pending' || block.status === 'error'">
@@ -276,7 +275,7 @@
 
                   <div class="mt-6 flex justify-between items-center gap-2">
                     <button class="px-4 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50"
-                            @click="$root.goToOverview()">К списку</button>
+                            @click="goToOverview()">К списку</button>
                     <div class="flex gap-2">
                       <button class="px-4 py-2 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                               :disabled="!hasPendingBlocks() || bulkAccepting"
@@ -286,7 +285,7 @@
                       </button>
                       <button class="px-4 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
                               :disabled="hasPendingBlocks()"
-                              @click="$root.advanceToNextStory()">Save & Next Story</button>
+                              @click="advanceToNextStory()">Save & Next Story</button>
                     </div>
                   </div>
                 </div>
@@ -402,6 +401,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>

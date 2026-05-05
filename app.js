@@ -1,7 +1,19 @@
+import Alpine from 'alpinejs';
 import { createAPIClient } from './lib/api.js';
 import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, NOT_REVIEWED } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
 import { nextFocusable, prevFocusable } from './lib/focus.js';
+
+window.Alpine = Alpine;
+
+// Lookup the appRoot reactive scope. Used by child component factories that
+// can't reach the parent via `this.$root` (Alpine 3 returns the *closest*
+// x-data ancestor, including self, not the topmost — so from inside a child
+// x-data the magic doesn't climb to appRoot). DOM lookup is reliable.
+function getAppRootScope() {
+  const el = document.querySelector('#app');
+  return el && el._x_dataStack ? el._x_dataStack[0] : null;
+}
 
 // === Configuration ===
 // API config is read from URL query params:
@@ -425,7 +437,9 @@ window.storyScreen = function () {
     },
 
     get group() {
-      return this.$root.groups.find(g => g.story_id === this.$root.currentStoryId) || null;
+      const root = getAppRootScope();
+      if (!root) return null;
+      return root.groups.find(g => g.story_id === root.currentStoryId) || null;
     },
 
     hasPendingBlocks() {
@@ -445,8 +459,10 @@ window.storyScreen = function () {
      */
     async bulkAcceptRemaining() {
       if (this.bulkAccepting) return;
+      const root = getAppRootScope();
+      if (!root) return;
       // Snapshot the row_ids up front so we don't iterate over a mutating
-      // group.blocks list while submitAction reassigns this.$root.groups.
+      // group.blocks list while submitAction reassigns root.groups.
       const pendingRowIds = getPendingBlocksInStory(this.group).map(b => b.row_id);
       if (pendingRowIds.length === 0) return;
 
@@ -454,15 +470,15 @@ window.storyScreen = function () {
       try {
         for (const rowId of pendingRowIds) {
           try {
-            await this.$root.submitAction({ row_id: rowId, action: 'accept' });
+            await root.submitAction({ row_id: rowId, action: 'accept' });
           } catch (e) {
-            this.$root.globalError = `Bulk accept stopped at row ${rowId}: ${e.message || e}`;
+            root.globalError = `Bulk accept stopped at row ${rowId}: ${e.message || e}`;
             return;
           }
         }
         // All pending blocks resolved — auto-advance to the next story.
         if (!this.hasPendingBlocks()) {
-          this.$root.advanceToNextStory();
+          root.advanceToNextStory();
         }
       } finally {
         this.bulkAccepting = false;
@@ -471,15 +487,22 @@ window.storyScreen = function () {
   };
 };
 
-window.blockCard = function (block) {
+window.blockCard = function (rowId) {
+  // Pass `rowId` (string), NOT `block` (object). When the parent's
+  // state.blocks[i] is reassigned by submitAction, Alpine's :key reuse means
+  // the closure-captured block object is stale. Looking up the live block by
+  // row_id from appRoot every read gives us reactive freshness.
   return {
-    block,
-    init(root) {
-      this._root = root;
+    init() {
+      this._root = getAppRootScope();
+    },
+    get block() {
+      const root = getAppRootScope();
+      const found = root?.state?.blocks?.find(b => b.row_id === rowId);
+      return found || { row_id: rowId, status: 'pending', original_payload: {}, proposed_payload: {}, edited_payload: null, llm_match_reason: '', block_component: '', block_path: '' };
     },
     fieldsToShow(b) {
-      // Show every key that appears in original_payload (proposed should match).
-      return Object.keys(b.original_payload || {});
+      return Object.keys(b?.original_payload || {});
     },
     statusBadgeClasses(status) {
       switch (status) {
@@ -495,11 +518,16 @@ window.blockCard = function (block) {
   };
 };
 
-window.blockActions = function (block) {
+window.blockActions = function (rowId) {
+  // Pass `rowId` (string), NOT `block` (object) — see blockCard for why.
   return {
-    block,
     busy: false,
     error: null,
+    get block() {
+      const root = getAppRootScope();
+      const found = root?.state?.blocks?.find(b => b.row_id === rowId);
+      return found || { row_id: rowId, status: 'pending', original_payload: {}, proposed_payload: {}, edited_payload: null };
+    },
 
     // Edit state
     editing: false,
@@ -518,8 +546,10 @@ window.blockActions = function (block) {
     // Delete state
     deleteModal: false,
 
-    init(root) {
-      this._root = root;
+    init() {
+      // See blockCard — Alpine 3's $root doesn't climb to appRoot from a child
+      // x-data scope. Look up appRoot via the DOM instead.
+      this._root = getAppRootScope();
     },
 
     /**
@@ -658,3 +688,15 @@ window.blockActions = function (block) {
     },
   };
 };
+
+// Register Alpine data factories AFTER the module's import chain has executed,
+// then start Alpine. This is the canonical Alpine + ESM pattern: importing
+// Alpine via the module and starting it explicitly avoids the race condition
+// where Alpine's auto-start fires before the ESM imports resolve and leaves
+// every `x-data="appRoot()"` bound to an empty {} scope.
+Alpine.data('appRoot', window.appRoot);
+Alpine.data('overviewScreen', window.overviewScreen);
+Alpine.data('storyScreen', window.storyScreen);
+Alpine.data('blockCard', window.blockCard);
+Alpine.data('blockActions', window.blockActions);
+Alpine.start();
