@@ -367,7 +367,7 @@ const verdictsParser = outputParser({
   type: '@n8n/n8n-nodes-langchain.outputParserStructured', version: 1.3,
   config: { name: 'Verdicts Schema', position: [2800, 0], parameters: {
     schemaType: 'fromJson',
-    jsonSchemaExample: '{"verdicts":[{"index":0,"match":true,"reason":"directly about topic","updated_fields":{"text":"new text"}}]}',
+    jsonSchemaExample: '{"verdicts":[{"index":0,"match":true,"reason":"directly about topic","updated_fields":{"text":"new text"}},{"index":1,"match":false,"reason":"unrelated mention","updated_fields":{}}]}',
   } },
 });
 
@@ -378,7 +378,7 @@ const verdictsParser = outputParser({
 // calls and gives the model story-level context for relevance decisions.
 const classifyRewriteAgent = node({
   type: '@n8n/n8n-nodes-langchain.agent', version: 3.1,
-  config: { name: 'LLM Classify + Rewrite', position: [2640, -200], parameters: {
+  config: { name: 'LLM Classify + Rewrite', position: [2640, -200], onError: 'continueRegularOutput', parameters: {
     promptType: 'define',
     hasOutputParser: true,
     text: `=Story: {{ $json.story_full_slug }}
@@ -389,19 +389,15 @@ Rewrite instruction: {{ $('Init Campaign Meta').first().json.rewrite_prompt }}
 MATCHED BLOCKS ({{ $json.match_count }}):
 {{ JSON.stringify(($json.matches || []).map((m, i) => ({ index: i, _uid: m._uid, component: m.component, affected_fields: m.affected_fields, hit_paragraphs: m.field_hits }))) }}
 
-For EACH block return one verdict object:
+For EACH block return one verdict object with ALL FOUR fields:
 - index (0..N-1, in input order)
-- match: true|false — does the keyword in the surrounding paragraph ACTUALLY refer to the topic? Numbers used for unrelated quantities ("5 stars", "5 minutes") = false.
-- reason: one short sentence explaining the decision.
-- updated_fields: object only when match=true. Keys = entries from affected_fields. Values = the rewritten value of that field per the rewrite instruction.
+- match: true|false — does the keyword in surrounding paragraph ACTUALLY refer to the topic? Numbers like "5 stars", "5 minutes", "топ-5", "5 последних лет" = false.
+- reason: one short sentence.
+- updated_fields: object — ALWAYS PRESENT. When match=true: keys = entries from affected_fields, values = rewritten text. When match=false: empty object {} (do NOT omit the field).
 
 Return EXACTLY {{ $json.match_count }} verdicts in input order.`,
     options: {
-      systemMessage: `You are an editorial assistant producing relevance verdicts and rewrite proposals in one pass. Be strict on relevance — false positives waste editorial review time. When match=true, the rewritten field value must:
-- Apply the rewrite instruction faithfully without adding new factual claims it does not authorise.
-- Preserve markdown, HTML tags, footnote refs like [6], proper nouns, links, and the surrounding text outside the affected paragraph.
-- Rewrite EVERY occurrence of the keyword in that field, not just the first.
-Always return exactly the requested number of verdicts in input order.`,
+      systemMessage: `Editorial assistant. Be strict on relevance. Always include updated_fields in every verdict object — empty object {} for match=false. When match=true, apply the rewrite instruction faithfully without new facts; preserve markdown/HTML/footnotes/links/proper nouns; rewrite EVERY occurrence in that field.`,
     },
   }, subnodes: { model: llmModel, outputParser: verdictsParser } },
   output: [{ output: { verdicts: [] } }],
@@ -417,6 +413,15 @@ const buildRowsFromVerdicts = node({
 const filterOut = $('Substring Filter (per story)').first().json;
 const story = filterOut;
 const upstream = $input.first().json || {};
+
+// When agent.onError=continueRegularOutput, the upstream item may carry
+// an error field instead of output — emit an llm_error sentinel so the
+// story is still marked as processed and the loop continues.
+if (upstream.error || (!upstream.output && !upstream.verdicts)) {
+  const now = new Date().toISOString();
+  const rid = \`\${meta.campaign_id}__\${story.story_id}____sentinel__\`;
+  return [{ json: { row_id: rid, campaign_id: meta.campaign_id, campaign_topic: meta.campaign_topic, campaign_started_at: meta.campaign_started_at, source_locale: meta.source_locale, story_id: story.story_id, story_full_slug: story.story_full_slug, story_name: story.story_name, block_uid: '__sentinel__', block_path: '', block_component: '__sentinel__', affected_fields: '[]', original_payload: '{}', original_content_hash: '', llm_match_reason: 'LLM call errored or returned no parseable output', proposed_payload: '{}', status: 'llm_error', updated_at: now } }];
+}
 
 const parsed = upstream.output || upstream;
 const verdicts = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];
