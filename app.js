@@ -92,11 +92,14 @@ window.appRoot = function () {
     groups: [],         // grouped by story
     // 'auth' shown when API_MODE='real' but no token in storage. The auth
     // screen is the only way in — every other screen requires a valid token.
-    screen: 'overview', // 'auth' | 'overview' | 'story' | 'done' | 'search'
+    screen: 'overview', // 'auth' | 'campaigns' | 'overview' | 'story' | 'done' | 'search'
     currentStoryId: null,
     apiMode: API_MODE,
     hasToken: !!CURRENT_TOKEN,
     authForm: { token: '', error: '', saving: false },
+    campaigns: [],
+    campaignsLoading: false,
+    campaignsError: null,
 
     // Keyboard shortcut state
     focusedRowId: null,    // currently focused block on story screen
@@ -117,12 +120,12 @@ window.appRoot = function () {
         this.loading = false;
         return;
       }
-      // Real mode with no explicit ?campaign= → editor is landing to start
-      // a new campaign, not view an existing one. Skip the auto-load (which
-      // would hit a non-existent default campaign) and go straight to search.
+      // Real mode with no explicit ?campaign= → land on campaigns picker.
+      // Editor either resumes an existing campaign or kicks off a new search.
       if (this.apiMode === 'real' && !HAS_EXPLICIT_CAMPAIGN) {
-        this.screen = 'search';
+        this.screen = 'campaigns';
         this.loading = false;
+        this.loadCampaigns();
         return;
       }
       try {
@@ -156,6 +159,55 @@ window.appRoot = function () {
 
     logout() {
       handleAuthFailure();
+    },
+
+    async loadCampaigns() {
+      this.campaignsLoading = true;
+      this.campaignsError = null;
+      try {
+        const list = await api.listCampaigns();
+        this.campaigns = list || [];
+      } catch (e) {
+        if (this.apiMode === 'real' && isAuthFailure(e)) {
+          handleAuthFailure();
+          return;
+        }
+        this.campaignsError = String(e.message || e);
+      } finally {
+        this.campaignsLoading = false;
+      }
+    },
+
+    openCampaign(campaignId) {
+      // Navigate via URL so a refresh stays on the campaign and the rest of
+      // the SPA's flow (init → refresh → render) takes over normally.
+      const params = new URLSearchParams(window.location.search);
+      params.set('campaign', campaignId);
+      window.location.search = params.toString();
+    },
+
+    goToCampaigns() {
+      this.screen = 'campaigns';
+      if (!this.campaigns.length) this.loadCampaigns();
+    },
+
+    /**
+     * Heuristic status label for a campaign card.
+     * - "running" if any block is still pending AND the row was updated
+     *   within the last 2 minutes (search workflow likely still inserting)
+     * - "ready"   if every block is non-pending (review complete)
+     * - "review"  otherwise (some pending, but search appears done)
+     */
+    campaignStatus(c) {
+      const total = c.total || 0;
+      const pending = (c.by_status && c.by_status.pending) || 0;
+      const reviewed = total - pending;
+      if (total === 0) return { label: 'empty', tone: 'neutral' };
+      if (pending === 0) return { label: 'ready', tone: 'success' };
+      const last = c.last_updated_at ? Date.parse(c.last_updated_at) : 0;
+      const ageMs = Date.now() - last;
+      if (last && ageMs < 2 * 60 * 1000) return { label: 'running', tone: 'warning' };
+      return { label: `${reviewed}/${total}`, tone: 'progress' };
     },
 
     async refresh() {

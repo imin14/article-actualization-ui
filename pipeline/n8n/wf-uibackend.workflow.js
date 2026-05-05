@@ -112,10 +112,8 @@ const origin = headers.origin || headers.Origin || '';
 const corsOrigin = ALLOWED_ORIGINS.indexOf(origin) >= 0 ? origin : DEFAULT_ORIGIN;
 const query = item.query || {};
 const campaignId = String(query.campaign_id || '').trim();
-if (!campaignId) {
-  return [{ json: { __error: 'campaign_id is required', __status: 400, __cors_origin: corsOrigin } }];
-}
-return [{ json: { campaign_id: campaignId, __cors_origin: corsOrigin } }];`,
+// Empty campaign_id is valid: list mode. shapeStateResponse decides output shape.
+return [{ json: { campaign_id: campaignId, list_mode: !campaignId, __cors_origin: corsOrigin } }];`,
     },
   },
   output: [{ campaign_id: 'cmp-portugal-2026-05-04', __cors_origin: 'https://imin.github.io' }],
@@ -148,7 +146,9 @@ const fetchCampaignRows = node({
       operation: 'get',
       dataTableId: { __rl: true, mode: 'id', value: DATA_TABLE_ID, cachedResultName: DATA_TABLE_NAME },
       matchType: 'allConditions',
-      filters: { conditions: [{ keyName: 'campaign_id', condition: 'eq', keyValue: expr('={{ $json.campaign_id }}') }] },
+      // No filter — fetch all rows. shapeStateResponse filters by campaign_id
+      // when one is provided, or groups into a campaigns list when not.
+      filters: { conditions: [] },
       returnAll: true,
     },
   },
@@ -164,12 +164,44 @@ const shapeStateResponse = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode: `const corsOrigin = $('Validate GET params').first().json.__cors_origin || 'https://imin.github.io';
-const rows = $input.all().map(i => i.json).filter(r => r && r.row_id);
+      jsCode: `const validated = $('Validate GET params').first().json;
+const corsOrigin = validated.__cors_origin || 'https://imin.github.io';
+const requestedCampaignId = validated.campaign_id;
+const allRows = $input.all().map(i => i.json).filter(r => r && r.row_id);
+const tryParse = (s) => { if (!s || typeof s !== 'string') return s; try { return JSON.parse(s); } catch { return s; } };
+
+// LIST MODE: no campaign_id given → return summary of every campaign in the table.
+if (!requestedCampaignId) {
+  const byCampaign = {};
+  for (const r of allRows) {
+    const cid = r.campaign_id;
+    if (!cid) continue;
+    if (!byCampaign[cid]) {
+      byCampaign[cid] = {
+        id: cid,
+        topic: r.campaign_topic || '',
+        source_locale: r.source_locale || 'en',
+        started_at: r.campaign_started_at || null,
+        total: 0,
+        by_status: {},
+        last_updated_at: null,
+      };
+    }
+    const c = byCampaign[cid];
+    c.total++;
+    const st = r.status || 'pending';
+    c.by_status[st] = (c.by_status[st] || 0) + 1;
+    if (r.updated_at && (!c.last_updated_at || r.updated_at > c.last_updated_at)) c.last_updated_at = r.updated_at;
+  }
+  const campaigns = Object.values(byCampaign).sort((a, b) => (b.last_updated_at || '').localeCompare(a.last_updated_at || ''));
+  return [{ json: { __status: 200, __body: { campaigns }, __cors_origin: corsOrigin } }];
+}
+
+// SINGLE CAMPAIGN MODE: filter to the requested campaign and return state.
+const rows = allRows.filter(r => r.campaign_id === requestedCampaignId);
 if (rows.length === 0) {
   return [{ json: { __status: 404, __body: { error: 'campaign not found' }, __cors_origin: corsOrigin } }];
 }
-const tryParse = (s) => { if (!s || typeof s !== 'string') return s; try { return JSON.parse(s); } catch { return s; } };
 const first = rows[0];
 const campaign = { id: first.campaign_id, topic: first.campaign_topic || '', started_at: first.campaign_started_at || null, source_locale: first.source_locale || 'en' };
 const blocks = rows.map(r => ({

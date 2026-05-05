@@ -302,40 +302,74 @@ return [{ json: { safety_dry_run: SAFETY_DRY_RUN, dry_run_effective: dryRunEffec
   }],
 });
 
+// We can't use the mAPI listing endpoint here — it returns story metadata
+// only (no `content.body`), so the substring filter has nothing to scan
+// against. The mAPI single-story endpoint does include content but would
+// require N+1 calls (one per story).
+//
+// Storyblok CDN API (api.storyblok.com/v2/cdn/stories) returns full content
+// body in the listing, so a single paginated dump is enough. Auth is via the
+// public Preview token in the `?token=` query param (same token used by the
+// Turkey Blocks Generator workflow). Max per_page=100, so up to 10 pages
+// here covers ~1000 stories — well above current Russian (493) and English
+// (526) corpus sizes.
+
+const generatePageNumbers = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Generate Page Numbers',
+    position: [480, 0],
+    parameters: {
+      mode: 'runOnceForAllItems',
+      language: 'javaScript',
+      jsCode: `// Carry the campaign meta on every page item so the HTTP node can
+// substitute folder + source_locale into its query parameters.
+const meta = $input.first().json;
+const MAX_PAGES = 10;
+const out = [];
+for (let p = 1; p <= MAX_PAGES; p++) out.push({ json: { page: p, folder: meta.folder, source_locale: meta.source_locale } });
+return out;`,
+    },
+  },
+  output: [
+    { page: 1, folder: 'immigrantinvest/new-blog', source_locale: 'ru' },
+    { page: 2, folder: 'immigrantinvest/new-blog', source_locale: 'ru' },
+  ],
+});
+
 const fetchStoryblokStories = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.4,
   config: {
-    name: 'Storyblok mAPI: List Stories',
-    position: [480, 0],
+    name: 'Storyblok CDN: List Stories',
+    position: [720, 0],
     alwaysOutputData: true,
     parameters: {
       method: 'GET',
-      url: 'https://mapi.storyblok.com/v1/spaces/176292/stories',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: 'https://api.storyblok.com/v2/cdn/stories',
       sendQuery: true,
       specifyQuery: 'keypair',
       queryParameters: {
         parameters: [
-          { name: 'per_page', value: '1000' },
-          { name: 'page', value: '1' },
+          { name: 'token', value: '82kxsVsvTpKJldQD7DqCvQtt' },
+          { name: 'per_page', value: '100' },
+          { name: 'page', value: '={{ $json.page }}' },
           { name: 'starts_with', value: '={{ $json.folder }}' },
-          { name: 'contain_component', value: '={{ $json.content_type }}' },
-          // Filter by ORIGINAL language. seo.0.languages contains every translation
-          // that exists for a story (including the origin), so all_in_array=ru would
-          // also match EN-program articles that happen to have an RU translation.
-          // We want stories where the editor's content is primary, so filter by
-          // originalLanguage.
+          // Filter by ORIGINAL language. seo.0.languages includes every
+          // translation that exists for a story; originalLanguage is where
+          // the editor's primary content lives. For RU originals (493),
+          // default content IS RU, so no `language=` param needed.
           { name: 'filter_query[seo.0.originalLanguage][in]', value: '={{ $json.source_locale }}' },
-          { name: 'with_summary', value: '1' },
-          { name: 'is_root', value: 'true' },
-          { name: 'locale', value: '={{ $json.source_locale }}' },
         ],
       },
-      options: { timeout: 60000, response: { response: { fullResponse: false, responseFormat: 'json', neverError: true } } },
+      // CDN rate limit is 6 req/sec — fire 5 in parallel then pause 1.1s.
+      options: {
+        timeout: 60000,
+        response: { response: { fullResponse: false, responseFormat: 'json', neverError: true } },
+        batching: { batch: { batchSize: 5, batchInterval: 1100 } },
+      },
     },
-    credentials: { httpHeaderAuth: newCredential('Storyblok mAPI Token (read-only)') },
   },
   output: [{ stories: [{ id: 12345, name: 'Portugal Golden Visa', full_slug: 'immigrantinvest/blog/portugal-golden-visa', content: { component: 'article', body: [{ _uid: 'block-1', component: 'text_block', text: 'Portugal Golden Visa requires 5 years of residence for citizenship.' }] } }] }],
 });
@@ -346,14 +380,25 @@ const flattenAndSubstringFilter = node({
   config: {
     name: 'Flatten + Substring Filter',
     position: [720, 0],
-    alwaysOutputData: true,
+    // alwaysOutputData intentionally omitted — when there are 0 matches we
+    // return an empty array so splitInBatches sees no items, fires onDone
+    // immediately and skips the LLM. With alwaysOutputData=true n8n would
+    // synthesize a single empty item, which propagates into the rewrite
+    // agent and crashes the structured output parser ("Model output doesn't
+    // fit required format") because the LLM responds conversationally to an
+    // empty batch.
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
       jsCode: `const meta = $("Init Campaign Meta").first().json;
 const keywordLc = meta.keyword_lc;
-const upstream = $input.first().json || {};
-const stories = Array.isArray(upstream.stories) ? upstream.stories : [];
+// CDN call returns one item per page. Concatenate stories across all pages.
+const pages = $input.all();
+const stories = [];
+for (const p of pages) {
+  const pageStories = Array.isArray(p.json && p.json.stories) ? p.json.stories : [];
+  for (const s of pageStories) stories.push(s);
+}
 function walkLeaves(obj, prefix, out) {
   if (obj === null || obj === undefined) return;
   if (typeof obj === "string" || typeof obj === "number") { out.push({ path: prefix, value: String(obj) }); return; }
@@ -407,16 +452,72 @@ for (const story of stories) {
     out.push({ json: { story_id: String(story.id || ""), story_full_slug: story.full_slug || story.slug || "", story_name: story.name || "", block_uid: block._uid, block_component: block.component, block_path: block.path, affected_fields: matchedFields, field_hits: fieldHits, original_payload: block.payload } });
   }
 }
-if (out.length === 0) return [{ json: { __empty: true, __debug: { stories_scanned: stories.length, blocks_scanned: totalBlocks, keyword: meta.keyword } } }];
+if (out.length === 0) return [];
 return out;`,
     },
   },
   output: [{ story_id: '12345', story_full_slug: 'immigrantinvest/blog/portugal-golden-visa', story_name: 'Portugal Golden Visa', block_uid: 'block-1', block_component: 'text_block', block_path: 'body[0]', affected_fields: ['text'], field_hits: { text: [{ para_index: 0, context: 'Portugal Golden Visa requires 5 years.' }] }, original_payload: { _uid: 'block-1', component: 'text_block', text: 'Portugal Golden Visa requires 5 years.' } }],
 });
 
+// Dedup against campaign_blocks: skip blocks whose row_id already exists.
+// Lets the editor re-trigger a campaign safely after a partial failure;
+// previously-processed blocks are not re-sent to the LLM.
+const fetchExistingRows = node({
+  type: 'n8n-nodes-base.dataTable',
+  version: 1.1,
+  config: {
+    name: 'Fetch existing campaign rows',
+    position: [960, 100],
+    alwaysOutputData: true,
+    parameters: {
+      resource: 'row',
+      operation: 'get',
+      dataTableId: { __rl: true, mode: 'id', value: 'wgKa7GSxjKjGrwQK', cachedResultName: 'campaign_blocks' },
+      matchType: 'allConditions',
+      filters: { conditions: [{ keyName: 'campaign_id', condition: 'eq', keyValue: expr("={{ $('Init Campaign Meta').first().json.campaign_id }}") }] },
+      returnAll: true,
+    },
+  },
+  output: [{ row_id: 'cmp-x__123__b-1' }],
+});
+
+// Drops candidates already in campaign_blocks AND caps total volume per run
+// so a typo-keyword or huge folder doesn't burn thousands of LLM calls.
+// The cap is high enough for the Portugal GV use case (~50-200 real hits)
+// but stops a runaway from scanning 1000+ blocks at once.
+const dedupAndCap = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Dedup + Cap',
+    position: [1200, 100],
+    parameters: {
+      mode: 'runOnceForAllItems',
+      language: 'javaScript',
+      jsCode: `const MAX_BLOCKS_PER_RUN = 200;
+const meta = $("Init Campaign Meta").first().json;
+const candidates = $("Flatten + Substring Filter").all().map(i => i.json);
+const existing = $("Fetch existing campaign rows").all().map(i => i.json).filter(r => r && r.row_id);
+const seen = new Set(existing.map(r => r.row_id));
+const fresh = [];
+for (const c of candidates) {
+  const rowId = \`\${meta.campaign_id}__\${c.story_id}__\${c.block_uid}\`;
+  if (seen.has(rowId)) continue;
+  fresh.push({ json: c });
+  if (fresh.length >= MAX_BLOCKS_PER_RUN) break;
+}
+return fresh;` },
+  },
+  output: [{ story_id: '12345', block_uid: 'b-1', block_path: 'body[0]' }],
+});
+
+// batchSize = 3 (was 10) — Gemini Flash hits "Cannot read properties of
+// undefined (reading 'parts')" when the structured output is too long for
+// the 2048 maxOutputTokens budget. 3 blocks per LLM call comfortably fits
+// even with rich Russian content.
 const loopBlocks = splitInBatches({
   version: 3,
-  config: { name: 'Loop Over Block Batches', position: [960, 0], parameters: { batchSize: 10, options: {} } },
+  config: { name: 'Loop Over Block Batches', position: [1440, 100], parameters: { batchSize: 3, options: {} } },
 });
 
 const prepareFilterPayload = node({
@@ -492,6 +593,7 @@ const filterAgent = node({
   config: {
     name: 'LLM Relevance Filter',
     position: [1440, -100],
+    onError: 'continueRegularOutput',
     parameters: {
       promptType: 'define',
       hasOutputParser: true,
@@ -578,6 +680,7 @@ const rewriteAgent = node({
   config: {
     name: 'LLM Rewrite Proposal',
     position: [2160, -100],
+    onError: 'continueRegularOutput',
     parameters: {
       promptType: 'define',
       hasOutputParser: true,
@@ -790,8 +893,11 @@ export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pr
   // Branch 1: original form-triggered pipeline.
   .add(formTrigger)
   .to(initCampaign)
+  .to(generatePageNumbers)
   .to(fetchStoryblokStories)
   .to(flattenAndSubstringFilter)
+  .to(fetchExistingRows)
+  .to(dedupAndCap)
   .to(
     loopBlocks
       .onEachBatch(

@@ -111,8 +111,98 @@
       </div>
     </template>
 
+    <!-- Campaigns picker — landing screen for authenticated users without ?campaign= -->
+    <template x-if="!loading && !error && screen === 'campaigns'">
+      <div class="min-h-screen flex flex-col">
+        <header class="glass-header sticky top-0 z-30">
+          <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-6">
+            <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7">
+            <div class="flex-1"></div>
+            <template x-if="apiMode === 'real' && hasToken">
+              <button type="button" @click="logout()" class="btn btn-ghost shrink-0" title="Удалить токен из этого браузера">Выйти</button>
+            </template>
+          </div>
+        </header>
+
+        <main class="max-w-5xl mx-auto px-6 py-8 w-full">
+          <div class="flex items-end justify-between mb-6 gap-3">
+            <div>
+              <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight">Кампании</h1>
+              <div class="text-sm text-[var(--imin-text-muted)] mt-1">
+                <span x-text="campaigns.length"></span> кампаний в работе
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-ghost" @click="loadCampaigns()" :disabled="campaignsLoading">
+                <svg class="w-3.5 h-3.5" :class="campaignsLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Обновить
+              </button>
+              <button class="btn btn-primary" @click="goToSearch()">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Новая кампания
+              </button>
+            </div>
+          </div>
+
+          <template x-if="campaignsError">
+            <div class="card p-4 mb-4 border-red-200 bg-red-50 text-sm text-red-800" x-text="campaignsError"></div>
+          </template>
+
+          <template x-if="campaignsLoading && !campaigns.length">
+            <div class="space-y-3">
+              <div class="skeleton h-16 w-full"></div>
+              <div class="skeleton h-16 w-full"></div>
+              <div class="skeleton h-16 w-full"></div>
+            </div>
+          </template>
+
+          <template x-if="!campaignsLoading && !campaigns.length && !campaignsError">
+            <div class="card p-8 text-center">
+              <div class="text-2xl mb-2">∅</div>
+              <div class="font-semibold text-[var(--imin-text)] mb-1">Пока нет кампаний</div>
+              <div class="text-sm text-[var(--imin-text-muted)] mb-5">Запусти первый поиск — это создаст кампанию.</div>
+              <button class="btn btn-primary" @click="goToSearch()">Запустить поиск</button>
+            </div>
+          </template>
+
+          <ul class="list-stack stagger-fade" x-show="campaigns.length">
+            <template x-for="c in campaigns" :key="c.id">
+              <li class="card card-interactive group" @click="openCampaign(c.id)">
+                <div class="px-5 py-4 flex items-center justify-between gap-4">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="locale-chip" x-text="c.source_locale || 'ru'"></span>
+                      <span class="slug-mono truncate" x-text="c.id"></span>
+                    </div>
+                    <div class="font-medium text-[15px] text-[var(--imin-text)] truncate" x-text="c.topic || c.id"></div>
+                    <div class="text-xs text-[var(--imin-text-muted)] mt-1">
+                      <span x-text="c.total"></span> блоков
+                      <template x-if="c.last_updated_at">
+                        <span> · обновлено <span x-text="new Date(c.last_updated_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })"></span></span>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <span class="badge"
+                          :class="{
+                            'badge-success': campaignStatus(c).tone === 'success',
+                            'badge-warning': campaignStatus(c).tone === 'warning',
+                            'badge-progress': campaignStatus(c).tone === 'progress',
+                            'badge-neutral': campaignStatus(c).tone === 'neutral'
+                          }"
+                          x-text="campaignStatus(c).label"></span>
+                    <svg class="w-4 h-4 text-[var(--imin-text-subtle)] transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                  </div>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </main>
+      </div>
+    </template>
+
     <!-- Routed content -->
-    <template x-if="!loading && !error && screen !== 'auth'">
+    <template x-if="!loading && !error && screen !== 'auth' && screen !== 'campaigns'">
       <div>
         <!-- Header — logo + campaign + progress -->
         <header class="glass-header sticky top-0 z-30">
