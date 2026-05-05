@@ -221,6 +221,18 @@
                           x-text="state.campaign.topic"></button>
                 </div>
                 <div class="hidden sm:flex flex-col items-end shrink-0">
+                  <div class="section-label">Search</div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full"
+                          :class="{
+                            'bg-amber-500 animate-pulse': isSearchRunning,
+                            'bg-slate-400': !isSearchRunning && searchStatusLabel === 'idle',
+                            'bg-slate-300': searchStatusLabel === 'empty' || searchStatusLabel === 'mock',
+                          }"></span>
+                    <span class="text-xs font-medium text-[var(--imin-text-muted)] capitalize" x-text="searchStatusLabel"></span>
+                  </div>
+                </div>
+                <div class="hidden sm:flex flex-col items-end shrink-0">
                   <div class="section-label">Progress</div>
                   <div class="text-sm text-[var(--imin-text)] font-medium tabular-nums">
                     <span x-text="state.progress.reviewed"></span> /
@@ -260,6 +272,63 @@
                 </svg>
                 Все кампании
               </button>
+              <!-- Search-execution status banner with Resume action -->
+              <div class="card p-4 mb-5 flex items-center gap-4 flex-wrap"
+                   :class="{
+                     'border-amber-200 bg-amber-50/40': isSearchRunning,
+                     'border-[var(--imin-border)]': !isSearchRunning,
+                   }">
+                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span class="w-2.5 h-2.5 rounded-full shrink-0"
+                        :class="{
+                          'bg-amber-500 animate-pulse': isSearchRunning,
+                          'bg-slate-400': !isSearchRunning && searchStatusLabel === 'idle',
+                          'bg-slate-300': searchStatusLabel === 'empty',
+                        }"></span>
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-[var(--imin-text)]">
+                      <template x-if="isSearchRunning">
+                        <span>Поиск работает в n8n</span>
+                      </template>
+                      <template x-if="!isSearchRunning && searchStatusLabel === 'idle'">
+                        <span>Поиск остановлен</span>
+                      </template>
+                      <template x-if="searchStatusLabel === 'empty'">
+                        <span>Кампания пуста</span>
+                      </template>
+                    </div>
+                    <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">
+                      <template x-if="latestBlockUpdatedAt">
+                        <span>Последняя активность: <span x-text="new Date(latestBlockUpdatedAt).toLocaleTimeString('ru-RU')"></span></span>
+                      </template>
+                      <template x-if="!latestBlockUpdatedAt">
+                        <span>Нет данных по блокам</span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <template x-if="!isSearchRunning && hasResumeConfig">
+                  <button class="btn btn-primary"
+                          :disabled="resumeBusy"
+                          @click="resumeCurrentCampaign()">
+                    <span x-show="!resumeBusy">Возобновить поиск</span>
+                    <span x-show="resumeBusy">Запускаю…</span>
+                  </button>
+                </template>
+                <template x-if="!isSearchRunning && !hasResumeConfig">
+                  <div class="text-xs text-[var(--imin-text-muted)] max-w-xs">
+                    Конфиг этой кампании не сохранён в этом браузере. Чтобы возобновить — открой форму поиска и запусти с тем же campaign_id.
+                  </div>
+                </template>
+                <template x-if="resumeMessage">
+                  <div class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-1.5 w-full"
+                       x-text="resumeMessage"></div>
+                </template>
+                <template x-if="resumeError">
+                  <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-1.5 w-full"
+                       x-text="resumeError"></div>
+                </template>
+              </div>
               <div class="flex items-end justify-between mb-6 gap-3">
                 <div>
                   <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight">Stories</h1>

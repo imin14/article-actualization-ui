@@ -49,6 +49,31 @@ function clearStoredToken() {
   try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch {}
 }
 
+// Per-campaign search config (keyword, prompt, etc.) is kept in localStorage
+// so the SPA can re-trigger the same workflow run with the same parameters
+// without making the user re-fill the form. The workflow itself dedupes by
+// (campaign_id, story_id) so re-submitting is safe — already-processed
+// stories are skipped.
+const CAMPAIGN_CONFIGS_KEY = 'actualization_ui_campaign_configs_v1';
+function readCampaignConfigs() {
+  try {
+    const raw = localStorage.getItem(CAMPAIGN_CONFIGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function saveCampaignConfig(campaignId, config) {
+  if (!campaignId) return;
+  try {
+    const all = readCampaignConfigs();
+    all[campaignId] = { ...config, _saved_at: new Date().toISOString() };
+    localStorage.setItem(CAMPAIGN_CONFIGS_KEY, JSON.stringify(all));
+  } catch {}
+}
+function getCampaignConfig(campaignId) {
+  const all = readCampaignConfigs();
+  return all[campaignId] || null;
+}
+
 const urlToken = params.get('t');
 if (urlToken) {
   // Strip a leading "Bearer " in case the onboarding link was built with the
@@ -135,6 +160,11 @@ window.appRoot = function () {
         // affect cross-campaign nav, not the current campaign view.
         if (this.apiMode === 'real') {
           this.loadCampaigns().catch(() => {});
+          // Quiet polling so the "Search status" indicator transitions from
+          // running → idle on its own, and new blocks materialise as they
+          // get inserted. Only polls when the user is on a campaign view
+          // (story or overview screen) — auth and search forms are skipped.
+          this._startStatusPolling();
         }
       } catch (e) {
         if (this.apiMode === 'real' && isAuthFailure(e)) {
@@ -195,6 +225,83 @@ window.appRoot = function () {
     goToCampaigns() {
       this.screen = 'campaigns';
       if (!this.campaigns.length) this.loadCampaigns();
+    },
+
+    // ─── Search execution status + resume ────────────────────────
+    // The SPA infers "is the search workflow currently running for this
+    // campaign?" from the freshness of the latest block-row updated_at.
+    // n8n stamps each newly-inserted row with the current ISO timestamp,
+    // so a recent timestamp implies the workflow is actively writing.
+    // Threshold is 90s — accommodates one CDN-page batch + one LLM call.
+    runningThresholdMs: 90 * 1000,
+    resumeBusy: false,
+    resumeError: null,
+    resumeMessage: null,
+    get latestBlockUpdatedAt() {
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      let latest = '';
+      for (const b of blocks) { if (b.updated_at && b.updated_at > latest) latest = b.updated_at; }
+      return latest || null;
+    },
+    get isSearchRunning() {
+      const latest = this.latestBlockUpdatedAt;
+      if (!latest) return false;
+      const ageMs = Date.now() - new Date(latest).getTime();
+      return ageMs >= 0 && ageMs < this.runningThresholdMs;
+    },
+    get searchStatusLabel() {
+      if (this.apiMode !== 'real') return 'mock';
+      if (this.isSearchRunning) return 'running';
+      if (!this.state || !this.state.blocks || this.state.blocks.length === 0) return 'empty';
+      return 'idle';
+    },
+    get hasResumeConfig() {
+      if (!this.state || !this.state.campaign) return false;
+      return !!getCampaignConfig(this.state.campaign.id);
+    },
+    _statusPollHandle: null,
+    _startStatusPolling() {
+      if (this._statusPollHandle) return;
+      const POLL_MS = 8000;
+      const tick = async () => {
+        // Skip polling on screens where state isn't being viewed.
+        if (this.screen !== 'overview' && this.screen !== 'story') return;
+        if (this.loading || this.error) return;
+        try { await this.refresh(); } catch { /* silent — polling shouldn't bubble */ }
+      };
+      this._statusPollHandle = setInterval(tick, POLL_MS);
+    },
+    async resumeCurrentCampaign() {
+      this.resumeError = null;
+      this.resumeMessage = null;
+      if (!this.state || !this.state.campaign) return;
+      const cid = this.state.campaign.id;
+      const cfg = getCampaignConfig(cid);
+      if (!cfg) {
+        this.resumeError = 'Не нашёл сохранённый конфиг этой кампании в этом браузере. Запусти новую (форма поиска) с тем же campaign_id.';
+        return;
+      }
+      this.resumeBusy = true;
+      try {
+        const res = await fetch(`${API_BASE_URL}/webhook/search-trigger`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: CURRENT_TOKEN },
+          body: JSON.stringify({ ...cfg, campaign_id: cid }),
+        });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = { error: text || `HTTP ${res.status}` }; }
+        if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        this.resumeMessage = `Запущен. Уже обработанные сторис будут пропущены автоматически.`;
+        // Refresh once after a beat so the new block.updated_at flips status
+        // to "running" without the user having to F5.
+        setTimeout(() => { this.refresh().catch(() => {}); }, 2000);
+      } catch (e) {
+        this.resumeError = String(e.message || e);
+      } finally {
+        this.resumeBusy = false;
+      }
     },
 
     // ─── Drill-in / drill-out (матрёшка) navigation ─────────────
@@ -1064,6 +1171,11 @@ window.searchScreen = function () {
       }
       this.queuedCampaignId = data.campaign_id || this.form.campaign_id;
       this.queuedAt = data.started_at || new Date().toISOString();
+      // Stash the config so a "Resume" button on the campaign view can
+      // re-trigger the workflow with the same parameters. The workflow
+      // dedupes per-story so re-running just continues from where it
+      // stopped.
+      saveCampaignConfig(this.queuedCampaignId, { ...this.form, campaign_id: this.queuedCampaignId });
     },
 
     /** Mock mode — simulates the four pipeline phases. Used when no ?api=. */
