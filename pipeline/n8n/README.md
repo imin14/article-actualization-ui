@@ -6,34 +6,60 @@ These `.workflow.js` files are the n8n Workflow SDK source for the workflows tha
 
 ### `wf-search-preprocess.workflow.js`
 
-**Live workflow IDs in n8n:**
-- `jIVm69uTSn9iL3GX` — **canonical** definition (kept by the build agent; matches the SDK source archived here)
-- `m0HxFfubActwbKBh` — duplicate from a 500-error-then-success retry; **delete this one** in morning cleanup. Both are inactive.
+**Live workflow ID:** `jIVm69uTSn9iL3GX`
+**Display name:** Mass Actualization: Search & Pre-Process
 
-**Display name:** "Mass Actualization: Search & Pre-Process"
-**Status:** INACTIVE (will not auto-trigger)
-**Trigger:** Form submission with fields `campaign_topic`, `campaign_id`, `keyword`, `context_description`, `source_locale`, `folder`, `content_type`, `rewrite_prompt`, `dry_run`
+**Triggers:**
+- Form submission (legacy, for n8n-internal testing)
+- POST `/webhook/search-trigger` (consumed by SPA — `Authorization: <token>` header, no `Bearer ` prefix; Cloud Run intercepts the `Bearer` scheme)
 
 **Pipeline:**
-1. Form trigger
-2. HTTP `mAPI list stories` (Storyblok read-only) — filtered by `seo.0.originalLanguage[in]=<source_locale>` (NOT `languages[all_in_array]`, which would also match translation variants)
-3. Code `flatten to blocks`
-4. Code `substring filter + paragraph chunking`
-5. SplitInBatches (batch size 10)
-6. AI Agent `context filter` (Gemini Flash, structured output)
-7. Code `drop non-matches`
-8. AI Agent `rewrite proposal` (Gemini Flash, structured output)
-9. Code `build campaign_blocks rows`
-10. Data Table insert (campaign_blocks)
-11. Slack notification
+1. Trigger
+2. Validate webhook payload (auth done upstream by trigger's headerAuth)
+3. Init Campaign Meta — normalise input, generate campaign_id, set safety flag
+4. Storyblok mAPI: List Stories — single call (per_page=1000) with `seo.0.originalLanguage[in]=<source_locale>` filter
+5. Flatten + Substring Filter — JS-only keyword match, attach hit-paragraphs
+6. Loop Over Block Batches (10 at a time): prepare batch, LLM filter (Gemini Flash), drop non-matches, prepare rewrite batch, LLM rewrite (Gemini Flash), build rows, Data Table insert, next batch
+7. Slack: Campaign Ready for Review — once, after the loop completes
 
-**Locale model (verified 2026-05-05):** Storyblok i18n is field-level. One story per article; each story has `seo[0].originalLanguage` (where authored) and `seo[0].languages` (which translations exist). RU originals (493) never cascade — `languages=['ru']` only by design. EN originals (526) cascade per their `seo[0].languages` (typically DE/ES/TR for blog, +AR/RU for programs). This workflow finds candidates for ONE source locale per run; cascade is a separate workflow.
+**Locale model (verified 2026-05-05):** Storyblok i18n is field-level. RU originals (493) never cascade — `languages=['ru']` only by design. EN originals (526) cascade per their `seo[0].languages` (typically DE/ES/TR for blog, +AR/RU for programs). This workflow finds candidates for ONE source locale per run; cascade is a separate workflow.
 
-**Token economy:** ~$1.20–$1.50 per 1000 stories scanned. Substring prefilter cuts ~80% of LLM filter cost. LLM prompts only see hit paragraphs (paragraph chunking), not whole blocks.
+**Token economy:** ~$1.20–$1.50 per 1000 stories scanned. Substring prefilter cuts ~80% of LLM filter cost. LLM prompts only see hit paragraphs, not whole blocks.
 
-**Safety:** Storyblok mAPI is read-only — no destructive ops. Workflow does NOT write to Storyblok at any step. Only writes are to:
-- n8n Data Table `campaign_blocks` (ID `wgKa7GSxjKjGrwQK`)
-- Slack notifications channel
+**Safety:** Read-only against Storyblok. Only writes are to campaign_blocks Data Table (id `wgKa7GSxjKjGrwQK`) + Slack notifications.
+
+### `wf-uibackend.workflow.js`
+
+**Live workflow ID:** `ORKhXHUFSANVF51w`
+**Display name:** Mass Actualization: UI Backend
+
+**Triggers:**
+- GET `/webhook/campaign-state?campaign_id=<id>` → `{ campaign, progress, blocks }`
+- POST `/webhook/campaign-action` → `{ status: 'ok', new_status, row_id, dry_run }`
+
+Both use `Authorization: <token>` header (Header Auth credential `Actualization UI Webhook`). Cloud Run reverse proxy intercepts any `Bearer ...` value as a Google IAM token, so the SPA sends the raw secret without a scheme prefix.
+
+**Pipeline:**
+
+GET path:
+1. Validate query param (campaign_id required)
+2. Fetch all rows from `campaign_blocks` where `campaign_id = ?`
+3. Shape response (parse JSON columns, compute progress)
+4. Respond with `{ campaign, progress, blocks }`
+
+POST path:
+1. Validate body (row_id + action required, action ∈ {accept, edit, skip, delete})
+2. switchCase by action → 4 separate Data Table update nodes (different actions write different columns)
+3. Build OK response
+4. Respond with `{ status: 'ok', new_status, row_id, dry_run }`
+
+**Safety:** SAFETY_DRY_RUN=true is forced inside `Validate POST body`. Status updates land in the Data Table only — no Storyblok writes until LIVE.
+
+## Auth credential
+
+Both workflows reference the n8n credential **`Actualization UI Webhook`** (Header Auth type). Editor pastes the raw secret (no `Bearer ` prefix) into the SPA → SPA sends `Authorization: <token>` header → n8n's built-in Header Auth check on the trigger compares against the credential's stored value → 401 before workflow execution if mismatch.
+
+**The credential MUST be manually bound to each webhook trigger in the n8n UI.** The SDK's `update_workflow` does not auto-bind credentials. After deploying, open each trigger in n8n UI → select the credential from the dropdown → save. Required for each new trigger (3 total: search-trigger, campaign-state, campaign-action).
 
 ## How these stay in sync with n8n
 
