@@ -68,7 +68,7 @@
     <template x-if="!loading && !error">
       <div>
         <!-- Header — logo + campaign + progress -->
-        <header class="bg-white border-b border-[var(--imin-border)] sticky top-0 z-30 backdrop-blur-sm bg-white/95">
+        <header class="glass-header sticky top-0 z-30">
           <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-6">
             <a href="/" class="shrink-0 flex items-center gap-3 group" title="Immigrant Invest">
               <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity group-hover:opacity-80">
@@ -210,9 +210,9 @@
                         <!-- Per-field diff cards -->
                         <div class="space-y-3">
                           <template x-for="fieldName in fieldsToShow(block)" :key="fieldName">
-                            <div class="rounded-[10px] border border-[var(--imin-border)] bg-[var(--imin-bg)] p-3.5">
+                            <div class="field-card">
                               <div class="field-label mb-2" x-text="fieldName"></div>
-                              <div class="diff-output text-[14px] text-[var(--imin-text)]"
+                              <div class="diff-output text-[14px]"
                                    x-html="diffHTML(
                                      block.original_payload[fieldName],
                                      (block.edited_payload && block.edited_payload[fieldName] != null
@@ -503,6 +503,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=8"></script>
+  <script type="module" src="app.js?v=9"></script>
 </body>
 </html>

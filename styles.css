@@ -1,4 +1,4 @@
-/* Mass Actualization UI — Apple-flavoured design system on IMIN palette */
+/* Mass Actualization UI — Liquid Glass on IMIN navy */
 
 :root {
   /* IMIN brand */
@@ -8,30 +8,38 @@
   --imin-navy-tint:   rgba(1, 32, 111, 0.08);
   --imin-navy-tint-2: rgba(1, 32, 111, 0.16);
 
-  /* Apple-style neutrals (light mode) */
-  --imin-bg:          #f5f5f7;            /* macOS .windowBackgroundColor */
-  --imin-bg-secondary:#ffffff;
-  --imin-surface:     #ffffff;
-  --imin-surface-2:   #fbfbfd;
-  --imin-hairline:    rgba(60, 60, 67, 0.10);   /* iOS .separator */
+  /* Apple-style neutrals — translucency-aware */
+  --imin-bg:          #f2f3f7;            /* warm desaturated grey, gives glass something to filter */
+  --imin-surface:     rgba(255, 255, 255, 0.72);
+  --imin-surface-2:   rgba(255, 255, 255, 0.85);
+  --imin-surface-solid: #ffffff;
+  --imin-hairline:    rgba(60, 60, 67, 0.10);
   --imin-hairline-2:  rgba(60, 60, 67, 0.18);
-  --imin-fill:        rgba(120, 120, 128, 0.08); /* iOS .systemFill */
-  --imin-fill-2:      rgba(120, 120, 128, 0.16);
-  --imin-text:        #1c1c1e;            /* iOS label */
-  --imin-text-muted:  rgba(60, 60, 67, 0.60);  /* iOS .secondaryLabel */
-  --imin-text-subtle: rgba(60, 60, 67, 0.30);  /* iOS .tertiaryLabel */
+  --imin-fill:        rgba(120, 120, 128, 0.10);
+  --imin-fill-2:      rgba(120, 120, 128, 0.18);
+  --imin-text:        #1c1c1e;
+  --imin-text-muted:  rgba(60, 60, 67, 0.62);
+  --imin-text-subtle: rgba(60, 60, 67, 0.36);
 
-  /* Apple-style status accents */
-  --status-green:     #34c759;
-  --status-green-bg:  rgba(52, 199, 89, 0.12);
+  /* Liquid Glass material — base white with subtle saturation boost */
+  --glass-bg:           rgba(255, 255, 255, 0.62);
+  --glass-bg-strong:    rgba(255, 255, 255, 0.78);
+  --glass-blur:         blur(20px) saturate(180%);
+  --glass-blur-light:   blur(12px) saturate(160%);
+  --glass-border:       rgba(255, 255, 255, 0.55);
+  --glass-highlight:    rgba(255, 255, 255, 0.85);
+  --glass-shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.8),
+                         inset 0 0 0 0.5px rgba(255, 255, 255, 0.45);
+  --glass-shadow-outer: 0 6px 24px -8px rgba(13, 20, 36, 0.10),
+                         0 1px 2px rgba(13, 20, 36, 0.04);
+  --glass-shadow-lift:  0 10px 32px -10px rgba(13, 20, 36, 0.14),
+                         0 2px 4px rgba(13, 20, 36, 0.04);
+
+  /* Apple-style status accents (muted versions for tinted controls) */
+  --status-green-bg:  rgba(52, 199, 89, 0.13);
   --status-green-fg:  #1a7f37;
-  --status-blue:      #007aff;
-  --status-blue-bg:   rgba(0, 122, 255, 0.12);
-  --status-blue-fg:   #0848a3;
-  --status-amber:     #ff9f0a;
   --status-amber-bg:  rgba(255, 159, 10, 0.14);
   --status-amber-fg:  #92400e;
-  --status-red:       #ff3b30;
   --status-red-bg:    rgba(255, 59, 48, 0.10);
   --status-red-fg:    #b1231b;
   --status-gray-bg:   rgba(120, 120, 128, 0.12);
@@ -44,13 +52,7 @@
   --imin-radius-lg:   18px;
   --imin-radius-xl:   22px;
 
-  /* Apple-grade elevation — short, soft, two-tone */
-  --imin-shadow-xs:   0 1px 1.5px rgba(0, 0, 0, 0.04);
-  --imin-shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  --imin-shadow:      0 4px 14px -4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --imin-shadow-lg:   0 24px 60px -16px rgba(0, 0, 0, 0.18), 0 6px 18px -4px rgba(0, 0, 0, 0.08);
-
-  /* Motion — Apple uses a subtle spring-ish curve for UI */
+  /* Motion */
   --imin-easing:      cubic-bezier(0.32, 0.72, 0, 1);
   --imin-easing-soft: cubic-bezier(0.4, 0, 0.2, 1);
   --imin-duration-xs: 120ms;
@@ -67,6 +69,22 @@ html, body {
   background: var(--imin-bg);
   color: var(--imin-text);
   letter-spacing: -0.005em;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Page gradient backdrop — gives Liquid Glass surfaces something to refract.
+   Soft IMIN-navy + warm peach blobs, bottom-fixed and pointer-event-free. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 12% 8%, rgba(1, 32, 111, 0.12), transparent 65%),
+    radial-gradient(ellipse 60% 50% at 92% 22%, rgba(255, 138, 76, 0.10), transparent 60%),
+    radial-gradient(ellipse 80% 60% at 50% 100%, rgba(120, 80, 200, 0.08), transparent 70%);
+  z-index: -1;
+  pointer-events: none;
 }
 
 [x-cloak] { display: none !important; }
@@ -99,6 +117,7 @@ html, body {
   word-break: break-word;
   line-height: 1.6;
   letter-spacing: -0.005em;
+  color: rgba(28, 28, 30, 0.86);
 }
 
 /* ─── Brand palette utilities ────────────────────────────── */
@@ -108,16 +127,36 @@ html, body {
 .bg-imin-navy:hover { background-color: var(--imin-navy-dark); }
 .border-imin-navy { border-color: var(--imin-navy); }
 
-/* ─── Cards & surfaces ─── Apple iOS group-style ──────────── */
+/* ─── Liquid Glass cards ─────────────────────────────────── */
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-outer), var(--glass-shadow-inner);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-outer), var(--glass-shadow-inner);
+}
 
 .card {
-  background: var(--imin-surface);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: var(--imin-radius-lg);
-  box-shadow: var(--imin-shadow-sm);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-outer), var(--glass-shadow-inner);
   transition:
     box-shadow var(--imin-duration) var(--imin-easing),
     transform var(--imin-duration) var(--imin-easing),
-    background-color var(--imin-duration) var(--imin-easing);
+    background-color var(--imin-duration) var(--imin-easing),
+    border-color var(--imin-duration) var(--imin-easing);
 }
 
 .card-interactive {
@@ -126,40 +165,52 @@ html, body {
 }
 
 .card-interactive:hover {
-  background: var(--imin-surface-2);
-  box-shadow: var(--imin-shadow);
+  background: var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow-lift), var(--glass-shadow-inner);
+  transform: translateY(-1px);
 }
 
 .card-interactive:active {
-  transform: scale(0.99);
+  transform: translateY(0) scale(0.997);
   transition-duration: var(--imin-duration-xs);
 }
 
-/* iOS-style grouped list of cards (replaces bordered ul + divide-y).
-   Each item is its own card; gap separates them — no shared borders. */
+/* iOS-style stack: each item is its own glass card; gap separates them */
 .list-stack {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-/* Inner hairline divider for sub-sections (kept thin, Apple-grade) */
+/* Inner field-cards (per-field diff display) — translucent white, lighter
+   than the parent card surface. NOT gray fill — proper layered glass. */
+.field-card {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6),
+              0 1px 2px rgba(13, 20, 36, 0.03);
+  border-radius: var(--imin-radius-sm);
+  padding: 12px 14px;
+}
+
 .hairline {
   border-color: var(--imin-hairline);
 }
 
-/* ─── Buttons ────────────────────────────────────────────── */
+/* ─── Buttons (compact, tinted, glass-hover) ─────────────── */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 14px;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.005em;
-  border-radius: 11px;
+  border-radius: 9px;
   position: relative;
   border: 1px solid transparent;
   transition:
@@ -173,78 +224,103 @@ html, body {
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   will-change: transform, box-shadow;
+  line-height: 1.3;
 }
 
 .btn:disabled { opacity: 0.42; cursor: not-allowed; }
 .btn:not(:disabled):hover { transform: translateY(-1px); }
 .btn:not(:disabled):active { transform: translateY(0) scale(0.98); transition-duration: var(--imin-duration-xs); }
 
-/* The only solid filled action: primary (story-level navigation). */
+/* Solid filled, only for primary navigation */
 .btn-primary {
   background: var(--imin-navy);
   color: white;
-  box-shadow: 0 1px 2px rgba(1, 32, 111, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(1, 32, 111, 0.16);
 }
 .btn-primary:not(:disabled):hover {
   background: var(--imin-navy-dark);
-  box-shadow: 0 4px 12px -2px rgba(1, 32, 111, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 6px 16px -3px rgba(1, 32, 111, 0.30);
 }
 
-/* All other actions use TINTED style: low-saturation bg + colored text.
-   Apple Settings/Mail look — readable but quiet. Hover deepens tint. */
+/* Tinted glass-hover variants */
 .btn-success {
   background: var(--status-green-bg);
   color: var(--status-green-fg);
-  border-color: rgba(52, 199, 89, 0.20);
+  border-color: rgba(52, 199, 89, 0.22);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .btn-success:not(:disabled):hover {
   background: rgba(52, 199, 89, 0.22);
-  border-color: rgba(52, 199, 89, 0.32);
-  box-shadow: 0 4px 12px -2px rgba(52, 199, 89, 0.18);
+  border-color: rgba(52, 199, 89, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    0 6px 16px -4px rgba(52, 199, 89, 0.22);
 }
 
 .btn-warning {
   background: var(--status-amber-bg);
   color: var(--status-amber-fg);
   border-color: rgba(255, 159, 10, 0.22);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .btn-warning:not(:disabled):hover {
   background: rgba(255, 159, 10, 0.24);
-  border-color: rgba(255, 159, 10, 0.34);
-  box-shadow: 0 4px 12px -2px rgba(255, 159, 10, 0.20);
+  border-color: rgba(255, 159, 10, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    0 6px 16px -4px rgba(255, 159, 10, 0.22);
 }
 
 .btn-neutral {
-  background: var(--imin-fill);
+  background: rgba(255, 255, 255, 0.50);
   color: var(--imin-text-muted);
   border-color: var(--imin-hairline);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .btn-neutral:not(:disabled):hover {
-  background: var(--imin-fill-2);
+  background: rgba(255, 255, 255, 0.75);
   color: var(--imin-text);
   border-color: var(--imin-hairline-2);
-  box-shadow: 0 4px 12px -2px rgba(60, 60, 67, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 4px 14px -3px rgba(60, 60, 67, 0.12);
 }
 
 .btn-danger {
   background: var(--status-red-bg);
   color: var(--status-red-fg);
   border-color: rgba(255, 59, 48, 0.20);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .btn-danger:not(:disabled):hover {
   background: rgba(255, 59, 48, 0.18);
-  border-color: rgba(255, 59, 48, 0.32);
-  box-shadow: 0 4px 12px -2px rgba(255, 59, 48, 0.18);
+  border-color: rgba(255, 59, 48, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    0 6px 16px -4px rgba(255, 59, 48, 0.22);
 }
 
 .btn-ghost {
-  background: var(--imin-fill);
+  background: rgba(255, 255, 255, 0.50);
   color: var(--imin-text);
-  border-color: transparent;
+  border-color: var(--imin-hairline);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .btn-ghost:hover {
-  background: var(--imin-fill-2);
-  border-color: var(--imin-hairline);
+  background: rgba(255, 255, 255, 0.78);
+  border-color: var(--imin-hairline-2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 4px 14px -3px rgba(60, 60, 67, 0.10);
 }
 
 .btn-link {
@@ -260,8 +336,8 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 9px;
-  font-size: 11px;
+  padding: 2.5px 8px;
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -336,14 +412,14 @@ html, body {
   border-radius: 8px;
 }
 
-/* ─── Modal & overlay ────────────────────────────────────── */
+/* ─── Modal & overlay ─── full Liquid Glass treatment ───── */
 
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(28, 28, 30, 0.36);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  background: rgba(28, 28, 30, 0.32);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -353,25 +429,42 @@ html, body {
 }
 
 .modal-panel {
-  background: var(--imin-surface);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: var(--imin-radius-xl);
-  box-shadow: var(--imin-shadow-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.4),
+    0 32px 80px -20px rgba(13, 20, 36, 0.32),
+    0 8px 24px -6px rgba(13, 20, 36, 0.14);
   width: 100%;
   max-width: 28rem;
-  padding: 28px;
+  padding: 24px;
   animation: scaleIn 240ms var(--imin-easing);
 }
 
-/* ─── Focus ring for keyboard navigation (INSET, won't overflow) ──── */
+/* ─── Inset focus ring (keyboard navigation) ─────────────── */
 
 .focus-ring-active {
-  /* Inset shadow keeps the highlight INSIDE the element bounds —
-     no more broken-border artefacts on rounded list items.
-     A subtle 1.5px navy outline + 4px tinted halo, both inset. */
   box-shadow:
     inset 0 0 0 1.5px var(--imin-navy),
-    inset 0 0 0 5px var(--imin-navy-tint);
-  background: var(--imin-surface) !important;
+    inset 0 0 0 5px var(--imin-navy-tint),
+    var(--glass-shadow-lift) !important;
+  background: var(--glass-bg-strong) !important;
+}
+
+/* ─── Sticky header — pure Liquid Glass ──────────────────── */
+
+.glass-header {
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 -1px 0 rgba(60, 60, 67, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 /* ─── Progress bar with shimmer ──────────────────────────── */
@@ -396,18 +489,18 @@ html, body {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.32) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2.4s linear infinite;
 }
 
-/* ─── Inline edit textarea ───────────────────────────────── */
+/* ─── Inline edit textarea — glass surface ───────────────── */
 
 .edit-textarea {
   width: 100%;
-  border: 1px solid var(--imin-hairline-2);
+  border: 1px solid rgba(60, 60, 67, 0.18);
   border-radius: var(--imin-radius-sm);
   padding: 11px 13px;
   font-size: 14px;
@@ -418,13 +511,17 @@ html, body {
     border-color var(--imin-duration) var(--imin-easing),
     box-shadow var(--imin-duration) var(--imin-easing),
     background-color var(--imin-duration) var(--imin-easing);
-  background: var(--imin-bg);
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--imin-text);
 }
 .edit-textarea:focus {
   outline: none;
   border-color: var(--imin-navy);
-  box-shadow: 0 0 0 3.5px var(--imin-navy-tint);
+  box-shadow:
+    0 0 0 3.5px var(--imin-navy-tint),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
   background: white;
 }
 
@@ -434,20 +531,23 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
-  background: var(--imin-fill);
+  background: rgba(255, 255, 255, 0.6);
   color: var(--imin-text-muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: help;
-  border: none;
+  border: 1px solid var(--imin-hairline);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   transition: all var(--imin-duration) var(--imin-easing);
 }
 .help-pill:hover {
   background: var(--imin-navy);
   color: white;
+  border-color: var(--imin-navy);
   transform: scale(1.06);
 }
 
