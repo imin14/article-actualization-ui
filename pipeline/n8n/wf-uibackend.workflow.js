@@ -167,7 +167,12 @@ const shapeStateResponse = node({
       jsCode: `const validated = $('Validate GET params').first().json;
 const corsOrigin = validated.__cors_origin || 'https://imin.github.io';
 const requestedCampaignId = validated.campaign_id;
-const allRows = $input.all().map(i => i.json).filter(r => r && r.row_id);
+const allRowsRaw = $input.all().map(i => i.json).filter(r => r && r.row_id);
+// Sentinel rows are bookkeeping markers from the search workflow ("this story
+// was processed, no relevant matches"). They should not be visible to editors
+// and should not count toward progress totals — strip them before any shaping.
+function isSentinel(r) { return r.block_component === '__sentinel__' || r.block_uid === '__sentinel__'; }
+const allRows = allRowsRaw.filter(r => !isSentinel(r));
 const tryParse = (s) => { if (!s || typeof s !== 'string') return s; try { return JSON.parse(s); } catch { return s; } };
 
 // LIST MODE: no campaign_id given → return summary of every campaign in the table.
@@ -198,11 +203,15 @@ if (!requestedCampaignId) {
 }
 
 // SINGLE CAMPAIGN MODE: filter to the requested campaign and return state.
-const rows = allRows.filter(r => r.campaign_id === requestedCampaignId);
-if (rows.length === 0) {
+// Need raw + filtered for this campaign: raw distinguishes "campaign doesn't
+// exist" (404) from "campaign exists but has only sentinels — 0 matches"
+// (empty 200), filtered drives the blocks list shown to the editor.
+const rawForCampaign = allRowsRaw.filter(r => r.campaign_id === requestedCampaignId);
+if (rawForCampaign.length === 0) {
   return [{ json: { __status: 404, __body: { error: 'campaign not found' }, __cors_origin: corsOrigin } }];
 }
-const first = rows[0];
+const rows = rawForCampaign.filter(r => !isSentinel(r));
+const first = rawForCampaign[0];
 const campaign = { id: first.campaign_id, topic: first.campaign_topic || '', started_at: first.campaign_started_at || null, source_locale: first.source_locale || 'en' };
 const blocks = rows.map(r => ({
   row_id: r.row_id, campaign_id: r.campaign_id, story_id: r.story_id, story_full_slug: r.story_full_slug, story_name: r.story_name,
