@@ -111,19 +111,19 @@
                         @click="helpOpen = true">?</button>
               </div>
 
-              <ul class="card divide-y divide-[var(--imin-border)] overflow-hidden stagger-fade">
+              <ul class="list-stack stagger-fade">
                 <template x-for="g in groups" :key="g.story_id">
-                  <li class="card-interactive cursor-pointer transition-colors hover:bg-[var(--imin-bg)]"
+                  <li class="card card-interactive group"
                       :data-story-id="g.story_id"
-                      :class="{ 'focus-ring-active relative z-10 rounded-[14px]': focusedStoryId === g.story_id }"
+                      :class="{ 'focus-ring-active': focusedStoryId === g.story_id }"
                       @click="focusedStoryId = g.story_id; goToStory(g.story_id)">
                     <div class="px-5 py-4 flex items-center justify-between gap-4">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 mb-1">
                           <span class="locale-chip" x-text="g.locale"></span>
-                          <span class="font-mono text-xs text-[var(--imin-text-subtle)] truncate" x-text="g.story_full_slug"></span>
+                          <span class="slug-mono truncate" x-text="g.story_full_slug"></span>
                         </div>
-                        <div class="font-medium text-[var(--imin-text)] truncate" x-text="g.story_name"></div>
+                        <div class="font-medium text-[15px] text-[var(--imin-text)] truncate" x-text="g.story_name"></div>
                       </div>
                       <div class="flex items-center gap-1.5 shrink-0">
                         <template x-for="badge in storyBadges(g)" :key="badge.label">
@@ -131,7 +131,8 @@
                                 :class="'badge-' + badge.label"
                                 x-text="badge.label + ' ' + badge.count"></span>
                         </template>
-                        <svg class="w-4 h-4 text-[var(--imin-text-subtle)] ml-1 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-4 h-4 text-[var(--imin-text-subtle)] ml-1 transition-transform group-hover:translate-x-0.5"
+                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                         </svg>
                       </div>
@@ -178,11 +179,11 @@
                   </div>
 
                   <!-- Block cards -->
-                  <ul class="space-y-4 stagger-fade">
+                  <ul class="list-stack stagger-fade">
                     <template x-for="block in group.blocks" :key="block.row_id">
-                      <li class="card p-5 transition-all"
+                      <li class="card p-5"
                           :data-row-id="block.row_id"
-                          :class="{ 'focus-ring-active relative z-10': focusedRowId === block.row_id }"
+                          :class="{ 'focus-ring-active': focusedRowId === block.row_id }"
                           @click="focusedRowId = block.row_id"
                           x-data="blockCard(block.row_id)" x-init="init()">
 
@@ -510,6 +511,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=6"></script>
+  <script type="module" src="app.js?v=7"></script>
 </body>
 </html>

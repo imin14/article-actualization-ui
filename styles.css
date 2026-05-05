@@ -1,32 +1,72 @@
-/* Mass Actualization UI — design system */
+/* Mass Actualization UI — Apple-flavoured design system on IMIN palette */
 
 :root {
-  --imin-navy: #01206f;
-  --imin-navy-dark: #001a70;
-  --imin-navy-soft: #1a3590;
-  --imin-bg: #fafbfc;
-  --imin-surface: #ffffff;
-  --imin-border: #e7eaf0;
-  --imin-text: #0d1424;
-  --imin-text-muted: #5a6273;
-  --imin-text-subtle: #8a92a3;
-  --imin-radius: 14px;
-  --imin-radius-sm: 8px;
-  --imin-shadow-sm: 0 1px 2px 0 rgb(13 20 36 / 0.04), 0 1px 1px 0 rgb(13 20 36 / 0.03);
-  --imin-shadow: 0 1px 3px 0 rgb(13 20 36 / 0.06), 0 4px 14px -2px rgb(13 20 36 / 0.04);
-  --imin-shadow-lg: 0 10px 32px -8px rgb(13 20 36 / 0.16), 0 4px 12px -2px rgb(13 20 36 / 0.08);
-  --imin-easing: cubic-bezier(0.22, 1, 0.36, 1);
-  --imin-duration: 220ms;
+  /* IMIN brand */
+  --imin-navy:        #01206f;
+  --imin-navy-dark:   #001654;
+  --imin-navy-soft:   #1a3590;
+  --imin-navy-tint:   rgba(1, 32, 111, 0.08);
+  --imin-navy-tint-2: rgba(1, 32, 111, 0.16);
+
+  /* Apple-style neutrals (light mode) */
+  --imin-bg:          #f5f5f7;            /* macOS .windowBackgroundColor */
+  --imin-bg-secondary:#ffffff;
+  --imin-surface:     #ffffff;
+  --imin-surface-2:   #fbfbfd;
+  --imin-hairline:    rgba(60, 60, 67, 0.10);   /* iOS .separator */
+  --imin-hairline-2:  rgba(60, 60, 67, 0.18);
+  --imin-fill:        rgba(120, 120, 128, 0.08); /* iOS .systemFill */
+  --imin-fill-2:      rgba(120, 120, 128, 0.16);
+  --imin-text:        #1c1c1e;            /* iOS label */
+  --imin-text-muted:  rgba(60, 60, 67, 0.60);  /* iOS .secondaryLabel */
+  --imin-text-subtle: rgba(60, 60, 67, 0.30);  /* iOS .tertiaryLabel */
+
+  /* Apple-style status accents */
+  --status-green:     #34c759;
+  --status-green-bg:  rgba(52, 199, 89, 0.12);
+  --status-green-fg:  #1a7f37;
+  --status-blue:      #007aff;
+  --status-blue-bg:   rgba(0, 122, 255, 0.12);
+  --status-blue-fg:   #0848a3;
+  --status-amber:     #ff9f0a;
+  --status-amber-bg:  rgba(255, 159, 10, 0.14);
+  --status-amber-fg:  #92400e;
+  --status-red:       #ff3b30;
+  --status-red-bg:    rgba(255, 59, 48, 0.10);
+  --status-red-fg:    #b1231b;
+  --status-gray-bg:   rgba(120, 120, 128, 0.12);
+  --status-gray-fg:   #4a4a52;
+
+  /* Geometry */
+  --imin-radius-xs:   6px;
+  --imin-radius-sm:   10px;
+  --imin-radius:      14px;
+  --imin-radius-lg:   18px;
+  --imin-radius-xl:   22px;
+
+  /* Apple-grade elevation — short, soft, two-tone */
+  --imin-shadow-xs:   0 1px 1.5px rgba(0, 0, 0, 0.04);
+  --imin-shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  --imin-shadow:      0 4px 14px -4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --imin-shadow-lg:   0 24px 60px -16px rgba(0, 0, 0, 0.18), 0 6px 18px -4px rgba(0, 0, 0, 0.08);
+
+  /* Motion — Apple uses a subtle spring-ish curve for UI */
+  --imin-easing:      cubic-bezier(0.32, 0.72, 0, 1);
+  --imin-easing-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --imin-duration-xs: 120ms;
+  --imin-duration:    220ms;
+  --imin-duration-lg: 360ms;
 }
 
 html, body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-feature-settings: 'tnum', 'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   background: var(--imin-bg);
   color: var(--imin-text);
+  letter-spacing: -0.005em;
 }
 
 [x-cloak] { display: none !important; }
@@ -34,21 +74,21 @@ html, body {
 /* ─── Diff highlighting ──────────────────────────────────── */
 
 .diff-del {
-  background-color: #fee2e2;
-  color: #991b1b;
+  background-color: rgba(255, 59, 48, 0.14);
+  color: #b1231b;
   text-decoration: line-through;
-  padding: 0 3px;
+  padding: 1px 4px;
   margin: 0 1px;
   border-radius: 4px;
   text-decoration-thickness: 1.5px;
-  text-decoration-color: #ef4444;
+  text-decoration-color: rgba(255, 59, 48, 0.7);
 }
 
 .diff-ins {
-  background-color: #d1fae5;
-  color: #065f46;
+  background-color: rgba(52, 199, 89, 0.18);
+  color: #1a7f37;
   text-decoration: none;
-  padding: 0 3px;
+  padding: 1px 4px;
   margin: 0 1px;
   border-radius: 4px;
   font-weight: 500;
@@ -57,37 +97,55 @@ html, body {
 .diff-output {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.65;
+  line-height: 1.6;
   letter-spacing: -0.005em;
 }
 
-/* ─── Brand palette utilities (used inline) ──────────────── */
+/* ─── Brand palette utilities ────────────────────────────── */
 
 .text-imin-navy { color: var(--imin-navy); }
 .bg-imin-navy { background-color: var(--imin-navy); }
 .bg-imin-navy:hover { background-color: var(--imin-navy-dark); }
 .border-imin-navy { border-color: var(--imin-navy); }
-.ring-imin-navy { --tw-ring-color: var(--imin-navy); }
 
-/* ─── Cards & surfaces ───────────────────────────────────── */
+/* ─── Cards & surfaces ─── Apple iOS group-style ──────────── */
 
 .card {
   background: var(--imin-surface);
-  border: 1px solid var(--imin-border);
-  border-radius: var(--imin-radius);
+  border-radius: var(--imin-radius-lg);
   box-shadow: var(--imin-shadow-sm);
-  transition: box-shadow var(--imin-duration) var(--imin-easing),
-              transform var(--imin-duration) var(--imin-easing),
-              border-color var(--imin-duration) var(--imin-easing);
+  transition:
+    box-shadow var(--imin-duration) var(--imin-easing),
+    transform var(--imin-duration) var(--imin-easing),
+    background-color var(--imin-duration) var(--imin-easing);
+}
+
+.card-interactive {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .card-interactive:hover {
+  background: var(--imin-surface-2);
   box-shadow: var(--imin-shadow);
-  border-color: #d4d9e3;
 }
 
 .card-interactive:active {
-  transform: scale(0.998);
+  transform: scale(0.99);
+  transition-duration: var(--imin-duration-xs);
+}
+
+/* iOS-style grouped list of cards (replaces bordered ul + divide-y).
+   Each item is its own card; gap separates them — no shared borders. */
+.list-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Inner hairline divider for sub-sections (kept thin, Apple-grade) */
+.hairline {
+  border-color: var(--imin-hairline);
 }
 
 /* ─── Buttons ────────────────────────────────────────────── */
@@ -97,95 +155,94 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 10px;
-  transition: all var(--imin-duration) var(--imin-easing);
+  letter-spacing: -0.005em;
+  border-radius: 11px;
+  transition:
+    background-color var(--imin-duration) var(--imin-easing),
+    color var(--imin-duration) var(--imin-easing),
+    transform var(--imin-duration-xs) var(--imin-easing),
+    box-shadow var(--imin-duration) var(--imin-easing);
   cursor: pointer;
   user-select: none;
-  letter-spacing: -0.005em;
   white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled { opacity: 0.42; cursor: not-allowed; }
 .btn:not(:disabled):active { transform: scale(0.97); }
 
 .btn-primary {
   background: var(--imin-navy);
   color: white;
-  box-shadow: 0 1px 2px rgb(1 32 111 / 0.15);
+  box-shadow: 0 1px 2px rgba(1, 32, 111, 0.18);
 }
-.btn-primary:not(:disabled):hover {
-  background: var(--imin-navy-dark);
-  box-shadow: 0 2px 6px rgb(1 32 111 / 0.25);
-}
+.btn-primary:not(:disabled):hover { background: var(--imin-navy-dark); }
 
 .btn-success {
-  background: #059669;
+  background: var(--status-green);
   color: white;
-  box-shadow: 0 1px 2px rgb(5 150 105 / 0.15);
+  box-shadow: 0 1px 2px rgba(52, 199, 89, 0.22);
 }
-.btn-success:not(:disabled):hover {
-  background: #047857;
-  box-shadow: 0 2px 6px rgb(5 150 105 / 0.25);
-}
+.btn-success:not(:disabled):hover { background: #28a745; }
 
 .btn-warning {
-  background: #d97706;
+  background: var(--status-amber);
   color: white;
 }
-.btn-warning:not(:disabled):hover {
-  background: #b45309;
-}
+.btn-warning:not(:disabled):hover { background: #ea8e09; }
 
 .btn-neutral {
-  background: #475569;
-  color: white;
+  background: var(--imin-fill-2);
+  color: var(--imin-text);
 }
-.btn-neutral:not(:disabled):hover {
-  background: #334155;
-}
+.btn-neutral:not(:disabled):hover { background: rgba(120, 120, 128, 0.22); }
 
 .btn-danger {
-  background: #dc2626;
+  background: var(--status-red);
   color: white;
+  box-shadow: 0 1px 2px rgba(255, 59, 48, 0.18);
 }
-.btn-danger:not(:disabled):hover {
-  background: #b91c1c;
-}
+.btn-danger:not(:disabled):hover { background: #e0352b; }
 
 .btn-ghost {
-  background: transparent;
+  background: var(--imin-fill);
   color: var(--imin-text);
-  border: 1px solid var(--imin-border);
 }
-.btn-ghost:hover {
-  background: #f1f3f7;
-  border-color: #c8cfdb;
-}
+.btn-ghost:hover { background: var(--imin-fill-2); }
 
-/* ─── Status badges ──────────────────────────────────────── */
+.btn-link {
+  background: transparent;
+  color: var(--imin-navy);
+  padding: 4px 8px;
+}
+.btn-link:hover { background: var(--imin-navy-tint); }
+
+/* ─── Status badges (Apple-style flat pills) ─────────────── */
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 3px 9px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   border-radius: 999px;
   transition: all var(--imin-duration) var(--imin-easing);
+  white-space: nowrap;
 }
 
-.badge-pending  { background: #fef3c7; color: #92400e; }
-.badge-accepted { background: #d1fae5; color: #065f46; }
-.badge-edited   { background: #dbeafe; color: #1e40af; }
-.badge-skipped  { background: #f1f5f9; color: #475569; }
-.badge-deleted  { background: #fee2e2; color: #991b1b; }
-.badge-error    { background: #fee2e2; color: #991b1b; }
+.badge-pending,
+.badge-proposed { background: var(--status-amber-bg); color: var(--status-amber-fg); }
+.badge-accepted,
+.badge-edited   { background: var(--status-green-bg); color: var(--status-green-fg); }
+.badge-skipped  { background: var(--status-gray-bg);  color: var(--status-gray-fg); }
+.badge-deleted,
+.badge-error    { background: var(--status-red-bg);   color: var(--status-red-fg); }
 
 /* ─── Animations ─────────────────────────────────────────── */
 
@@ -200,7 +257,7 @@ html, body {
 }
 
 @keyframes slideUpFade {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -220,9 +277,8 @@ html, body {
 .animate-slide-up   { animation: slideUpFade 320ms var(--imin-easing) both; }
 .animate-pulse-once { animation: pulse-status 380ms var(--imin-easing); }
 
-/* Stagger children animations */
 .stagger-fade > * {
-  animation: slideUpFade 380ms var(--imin-easing) both;
+  animation: slideUpFade 320ms var(--imin-easing) both;
 }
 .stagger-fade > *:nth-child(1) { animation-delay: 30ms; }
 .stagger-fade > *:nth-child(2) { animation-delay: 60ms; }
@@ -234,12 +290,16 @@ html, body {
 .stagger-fade > *:nth-child(8) { animation-delay: 240ms; }
 .stagger-fade > *:nth-child(n+9) { animation-delay: 270ms; }
 
-/* Skeleton loader */
 .skeleton {
-  background: linear-gradient(90deg, #eef0f5 0%, #f7f8fb 50%, #eef0f5 100%);
+  background: linear-gradient(
+    90deg,
+    var(--imin-fill) 0%,
+    var(--imin-fill-2) 50%,
+    var(--imin-fill) 100%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 /* ─── Modal & overlay ────────────────────────────────────── */
@@ -247,44 +307,44 @@ html, body {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(13, 20, 36, 0.45);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(28, 28, 30, 0.36);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
   z-index: 50;
-  animation: fadeIn 180ms ease-out;
+  animation: fadeIn 180ms var(--imin-easing-soft);
 }
 
 .modal-panel {
   background: var(--imin-surface);
-  border-radius: var(--imin-radius);
+  border-radius: var(--imin-radius-xl);
   box-shadow: var(--imin-shadow-lg);
   width: 100%;
   max-width: 28rem;
-  padding: 24px;
-  animation: scaleIn 220ms var(--imin-easing);
+  padding: 28px;
+  animation: scaleIn 240ms var(--imin-easing);
 }
 
-/* ─── Focus ring for keyboard navigation ─────────────────── */
-
-.focus-ring {
-  position: relative;
-  outline: none;
-}
+/* ─── Focus ring for keyboard navigation (INSET, won't overflow) ──── */
 
 .focus-ring-active {
-  box-shadow: 0 0 0 2px var(--imin-navy), 0 0 0 4px rgb(1 32 111 / 0.1);
-  border-color: var(--imin-navy) !important;
+  /* Inset shadow keeps the highlight INSIDE the element bounds —
+     no more broken-border artefacts on rounded list items.
+     A subtle 1.5px navy outline + 4px tinted halo, both inset. */
+  box-shadow:
+    inset 0 0 0 1.5px var(--imin-navy),
+    inset 0 0 0 5px var(--imin-navy-tint);
+  background: var(--imin-surface) !important;
 }
 
-/* ─── Progress bar with stripe animation when active ──── */
+/* ─── Progress bar with shimmer ──────────────────────────── */
 
 .progress-track {
-  height: 4px;
-  background: rgba(1, 32, 111, 0.08);
+  height: 3px;
+  background: var(--imin-navy-tint);
   overflow: hidden;
 }
 
@@ -302,7 +362,7 @@ html, body {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.22) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -313,62 +373,64 @@ html, body {
 
 .edit-textarea {
   width: 100%;
-  border: 1.5px solid var(--imin-border);
+  border: 1px solid var(--imin-hairline-2);
   border-radius: var(--imin-radius-sm);
-  padding: 10px 12px;
+  padding: 11px 13px;
   font-size: 14px;
-  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
   line-height: 1.55;
   resize: vertical;
-  transition: border-color var(--imin-duration) var(--imin-easing),
-              box-shadow var(--imin-duration) var(--imin-easing);
-  background: #fafbfc;
+  transition:
+    border-color var(--imin-duration) var(--imin-easing),
+    box-shadow var(--imin-duration) var(--imin-easing),
+    background-color var(--imin-duration) var(--imin-easing);
+  background: var(--imin-bg);
+  color: var(--imin-text);
 }
 .edit-textarea:focus {
   outline: none;
   border-color: var(--imin-navy);
-  box-shadow: 0 0 0 3px rgb(1 32 111 / 0.08);
+  box-shadow: 0 0 0 3.5px var(--imin-navy-tint);
   background: white;
 }
 
-/* ─── Tooltip-style help icon ──────────────────────────── */
+/* ─── Help pill (the round '?' button) ──────────────────── */
 
 .help-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
-  background: var(--imin-bg);
-  border: 1px solid var(--imin-border);
+  background: var(--imin-fill);
   color: var(--imin-text-muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: help;
+  border: none;
   transition: all var(--imin-duration) var(--imin-easing);
 }
 .help-pill:hover {
   background: var(--imin-navy);
   color: white;
-  border-color: var(--imin-navy);
-  transform: scale(1.08);
+  transform: scale(1.06);
 }
 
-/* ─── Story / block content typography ───────────────────── */
+/* ─── Typography ─────────────────────────────────────────── */
 
 .story-title {
-  font-size: 1.5rem;
+  font-size: 1.625rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  letter-spacing: -0.024em;
+  line-height: 1.18;
   color: var(--imin-text);
 }
 
 .section-label {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--imin-text-subtle);
 }
@@ -376,9 +438,9 @@ html, body {
 .field-label {
   font-size: 11px;
   font-weight: 500;
-  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  color: var(--imin-text-subtle);
-  letter-spacing: 0.01em;
+  font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--imin-text-muted);
+  letter-spacing: 0.005em;
 }
 
 .locale-chip {
@@ -387,29 +449,36 @@ html, body {
   padding: 2px 7px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  background: var(--imin-bg);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--imin-navy-tint);
   color: var(--imin-navy);
-  border: 1px solid var(--imin-border);
-  border-radius: 4px;
+  border-radius: 5px;
+}
+
+.slug-mono {
+  font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--imin-text-subtle);
+  letter-spacing: -0.005em;
 }
 
 /* ─── Scrollbar polish ───────────────────────────────────── */
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d4d9e3;
+  background: rgba(60, 60, 67, 0.20);
   border-radius: 999px;
-  border: 2px solid var(--imin-bg);
+  border: 3px solid var(--imin-bg);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b8c0cf;
+  background: rgba(60, 60, 67, 0.35);
 }
 
 /* ─── Reduced motion respect ─────────────────────────────── */
@@ -423,5 +492,3 @@ html, body {
     transition-duration: 0.01ms !important;
   }
 }
-</content>
-</invoke>
