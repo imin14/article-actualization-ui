@@ -655,7 +655,22 @@ window.blockCard = function (rowId) {
       return found || { row_id: rowId, status: 'pending', original_payload: {}, proposed_payload: {}, edited_payload: null, llm_match_reason: '', block_component: '', block_path: '' };
     },
     fieldsToShow(b) {
+      // affected_fields holds the deep paths (e.g. "cells.0.content.0.content.0.text")
+      // where the substring keyword actually matched. We render diffs on those
+      // leaves only — top-level keys would include arrays (cells, content) that
+      // aren't strings and render as "undefined" in the diff.
+      if (Array.isArray(b?.affected_fields) && b.affected_fields.length) return b.affected_fields;
       return Object.keys(b?.original_payload || {});
+    },
+    getByPath(obj, path) {
+      if (!obj || !path) return null;
+      const segs = String(path).split('.');
+      let cur = obj;
+      for (const seg of segs) {
+        if (cur == null) return null;
+        cur = Array.isArray(cur) ? cur[Number(seg)] : cur[seg];
+      }
+      return cur;
     },
     statusBadgeClasses(status) {
       switch (status) {
@@ -758,12 +773,34 @@ window.blockActions = function (rowId) {
 
     startEdit() {
       this.editedFields = {};
-      const edited = this.block.edited_payload || {};
-      const proposed = this.block.proposed_payload || {};
-      for (const k of Object.keys(this.block.original_payload || {})) {
-        if (edited[k] != null) this.editedFields[k] = edited[k];
-        else if (proposed[k] != null) this.editedFields[k] = proposed[k];
-        else this.editedFields[k] = this.block.original_payload[k] || '';
+      const block = this.block;
+      // affected_fields holds deep dot/index paths for nested blocks
+      // (table_row, faq, etc.). Walk each path on every payload to pre-fill
+      // textareas with the LEAF value, not an array/object.
+      const fields = Array.isArray(block.affected_fields) && block.affected_fields.length
+        ? block.affected_fields
+        : Object.keys(block.original_payload || {});
+      const root = getAppRootScope();
+      const drill = (obj, path) => root && typeof root.getByPath === 'function' ? root.getByPath(obj, path) : null;
+      // Fallback drill for environments where appRoot isn't ready yet.
+      const localDrill = (obj, path) => {
+        if (!obj || !path) return null;
+        const segs = String(path).split('.');
+        let cur = obj;
+        for (const seg of segs) {
+          if (cur == null) return null;
+          cur = Array.isArray(cur) ? cur[Number(seg)] : cur[seg];
+        }
+        return cur;
+      };
+      const get = (obj, path) => drill(obj, path) ?? localDrill(obj, path);
+      for (const k of fields) {
+        const editedVal = get(block.edited_payload, k);
+        const proposedVal = get(block.proposed_payload, k);
+        const originalVal = get(block.original_payload, k);
+        if (editedVal != null) this.editedFields[k] = String(editedVal);
+        else if (proposedVal != null) this.editedFields[k] = String(proposedVal);
+        else this.editedFields[k] = String(originalVal ?? '');
       }
       this.editing = true;
       this.error = null;

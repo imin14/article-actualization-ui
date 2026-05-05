@@ -217,7 +217,8 @@ const blocks = rows.map(r => ({
 }));
 const byStatus = {};
 for (const b of blocks) byStatus[b.status] = (byStatus[b.status] || 0) + 1;
-const reviewed = blocks.filter(b => b.status !== 'pending').length;
+const REVIEWED_STATUSES = ['accepted', 'edited', 'skipped', 'deleted'];
+const reviewed = blocks.filter(b => REVIEWED_STATUSES.indexOf(b.status) >= 0).length;
 const progress = { total: blocks.length, reviewed, by_status: byStatus };
 return [{ json: { __status: 200, __body: { campaign, progress, blocks }, __cors_origin: corsOrigin } }];`,
     },

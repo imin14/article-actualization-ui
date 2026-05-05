@@ -354,6 +354,12 @@ body::before {
 .badge-deleted,
 .badge-error    { background: var(--status-red-bg);   color: var(--status-red-fg); }
 
+/* Campaign-picker tones (mapped from campaignStatus.tone). */
+.badge-success  { background: var(--status-green-bg); color: var(--status-green-fg); }
+.badge-warning  { background: var(--status-amber-bg); color: var(--status-amber-fg); }
+.badge-progress { background: var(--status-amber-bg); color: var(--status-amber-fg); }
+.badge-neutral  { background: var(--status-gray-bg);  color: var(--status-gray-fg); }
+
 /* ─── Animations ─────────────────────────────────────────── */
 
 @keyframes fadeIn {

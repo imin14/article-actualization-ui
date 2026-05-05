@@ -376,12 +376,8 @@
                               <div class="field-label mb-2" x-text="fieldName"></div>
                               <div class="diff-output text-[14px]"
                                    x-html="diffHTML(
-                                     block.original_payload[fieldName],
-                                     (block.edited_payload && block.edited_payload[fieldName] != null
-                                        ? block.edited_payload[fieldName]
-                                        : (block.proposed_payload && block.proposed_payload[fieldName] != null
-                                            ? block.proposed_payload[fieldName]
-                                            : block.original_payload[fieldName]))
+                                     String(getByPath(block.original_payload, fieldName) ?? ''),
+                                     String((getByPath(block.edited_payload, fieldName) ?? getByPath(block.proposed_payload, fieldName) ?? getByPath(block.original_payload, fieldName)) ?? '')
                                    )"></div>
                             </div>
                           </template>
@@ -406,7 +402,7 @@
                                    x-transition:enter-start="opacity-0 translate-y-1"
                                    x-transition:enter-end="opacity-100 translate-y-0"
                                    class="space-y-3">
-                                <template x-for="fieldName in Object.keys(block.original_payload)" :key="fieldName">
+                                <template x-for="fieldName in fieldsToShow(block)" :key="fieldName">
                                   <div>
                                     <div class="field-label mb-1.5" x-text="fieldName"></div>
                                     <textarea class="edit-textarea" rows="4" x-model="editedFields[fieldName]"></textarea>
