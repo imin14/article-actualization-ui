@@ -19,21 +19,60 @@ function getAppRootScope() {
 // API config is read from URL query params:
 //   ?campaign=<campaign_id>          — required for real campaigns; defaults to mock fixture
 //   ?api=<n8n base URL>              — when present, switches to real client; absent = mock mode
-//   ?t=<bearer token>                — auth token for n8n webhooks
+//   ?t=<bearer token>                — one-time onboarding token; saved to localStorage
+//                                      and scrubbed from URL on first load.
 //
 // Without ?api=, the app runs against the in-memory mock for local development.
 const params = new URLSearchParams(window.location.search);
 const CAMPAIGN_ID = params.get('campaign') || 'cmp-portugal-2026-05-04';
 
 const API_BASE_URL = params.get('api') || '';
-const API_TOKEN = params.get('t') || '';
 const API_MODE = API_BASE_URL ? 'real' : 'mock';
+
+// Token lives in localStorage so it doesn't sit in the URL bar / history /
+// referer / shared links. The URL `?t=...` form is for one-time onboarding —
+// the editor opens it once and the token is moved to localStorage immediately.
+const TOKEN_STORAGE_KEY = 'actualization_ui_token_v1';
+function readStoredToken() {
+  try { return localStorage.getItem(TOKEN_STORAGE_KEY) || ''; } catch { return ''; }
+}
+function writeStoredToken(t) {
+  try { localStorage.setItem(TOKEN_STORAGE_KEY, t); } catch {}
+}
+function clearStoredToken() {
+  try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch {}
+}
+
+const urlToken = params.get('t');
+if (urlToken) {
+  writeStoredToken(urlToken);
+  params.delete('t');
+  const newSearch = params.toString();
+  const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
+  window.history.replaceState(null, '', newUrl);
+}
+
+let CURRENT_TOKEN = readStoredToken();
+const API_TOKEN = CURRENT_TOKEN; // legacy alias used elsewhere in this file
 
 const api = createAPIClient({
   mode: API_MODE,
   baseURL: API_BASE_URL,
-  token: API_TOKEN,
+  getToken: () => CURRENT_TOKEN,
 });
+
+// Centralised auth-failure handler. Wipes the stored token and reloads the
+// SPA so the auth-gate screen is shown fresh. Called from anywhere a backend
+// returns 401/403 (or whatever the response parses as "unauthorized").
+function isAuthFailure(error) {
+  const msg = String(error && (error.message || error)).toLowerCase();
+  return msg.includes('401') || msg.includes('403') || msg.includes('unauthorized') || msg.includes('authorization data');
+}
+function handleAuthFailure() {
+  clearStoredToken();
+  CURRENT_TOKEN = '';
+  window.location.reload();
+}
 
 window.appRoot = function () {
   return {
@@ -42,8 +81,13 @@ window.appRoot = function () {
     globalError: null,
     state: null,        // CampaignState from API
     groups: [],         // grouped by story
-    screen: 'overview', // 'overview' | 'story' | 'done' | 'search'
+    // 'auth' shown when API_MODE='real' but no token in storage. The auth
+    // screen is the only way in — every other screen requires a valid token.
+    screen: 'overview', // 'auth' | 'overview' | 'story' | 'done' | 'search'
     currentStoryId: null,
+    apiMode: API_MODE,
+    hasToken: !!CURRENT_TOKEN,
+    authForm: { token: '', error: '', saving: false },
 
     // Keyboard shortcut state
     focusedRowId: null,    // currently focused block on story screen
@@ -56,13 +100,42 @@ window.appRoot = function () {
     _blocksEditing: new Set(),
 
     async init() {
+      // Auth gate: real mode without a token sends the user straight to the
+      // auth screen. We never hit the API in that state, so an empty token
+      // can't trigger a 401 cascade.
+      if (this.apiMode === 'real' && !this.hasToken) {
+        this.screen = 'auth';
+        this.loading = false;
+        return;
+      }
       try {
         await this.refresh();
       } catch (e) {
+        if (this.apiMode === 'real' && isAuthFailure(e)) {
+          handleAuthFailure();
+          return;
+        }
         this.error = String(e.message || e);
       } finally {
         this.loading = false;
       }
+    },
+
+    async submitAuthToken() {
+      const t = String(this.authForm.token || '').trim();
+      if (!t) {
+        this.authForm.error = 'Введите токен';
+        return;
+      }
+      this.authForm.saving = true;
+      this.authForm.error = '';
+      writeStoredToken(t);
+      // Reload so the SPA re-bootstraps with the new token cleanly.
+      window.location.reload();
+    },
+
+    logout() {
+      handleAuthFailure();
     },
 
     async refresh() {
@@ -113,6 +186,10 @@ window.appRoot = function () {
           }
         }
       } catch (e) {
+        if (this.apiMode === 'real' && isAuthFailure(e)) {
+          handleAuthFailure();
+          return;
+        }
         this.globalError = `Действие не сохранилось: ${e.message}. Состояние возвращено.`;
         await this.refresh();
         throw e;
@@ -830,6 +907,10 @@ window.searchScreen = function () {
       const text = await res.text();
       let data;
       try { data = JSON.parse(text); } catch { data = { error: text || `HTTP ${res.status}` }; }
+      if (res.status === 401 || res.status === 403) {
+        handleAuthFailure();
+        return;
+      }
       if (!res.ok || data.error) {
         throw new Error(data.error || `Search trigger failed (HTTP ${res.status})`);
       }

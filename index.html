@@ -55,17 +55,64 @@
         <div class="card max-w-lg w-full p-6 border-red-200 bg-red-50">
           <div class="flex items-start gap-3">
             <div class="text-2xl leading-none">⚠️</div>
-            <div>
+            <div class="flex-1">
               <div class="font-semibold text-red-900">Не удалось загрузить кампанию</div>
               <div class="text-sm text-red-800 mt-1" x-text="error"></div>
+              <template x-if="apiMode === 'real' && hasToken">
+                <button type="button"
+                        @click="logout()"
+                        class="btn btn-ghost mt-4">
+                  Сбросить токен и войти заново
+                </button>
+              </template>
             </div>
           </div>
         </div>
       </div>
     </template>
 
+    <!-- Auth gate — shown when API_MODE='real' but no token in localStorage. -->
+    <template x-if="!loading && !error && screen === 'auth'">
+      <div class="flex items-center justify-center min-h-screen p-8 animate-fade-in">
+        <div class="card max-w-md w-full p-7">
+          <div class="flex items-center gap-3 mb-5">
+            <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7">
+          </div>
+          <h1 class="text-xl font-semibold text-[var(--imin-text)] mb-1.5">Доступ к Mass Actualization</h1>
+          <p class="text-sm text-[var(--imin-text-muted)] mb-5">
+            Введите токен доступа, который вы получили от администратора. Он сохранится только в этом браузере.
+          </p>
+          <form @submit.prevent="submitAuthToken()">
+            <label class="block">
+              <span class="block text-xs font-medium text-[var(--imin-text-muted)] uppercase tracking-wide mb-1.5">Токен</span>
+              <input type="password"
+                     x-model="authForm.token"
+                     :disabled="authForm.saving"
+                     autocomplete="current-password"
+                     autofocus
+                     placeholder="Вставьте сюда"
+                     class="w-full px-3 py-2 text-sm rounded-lg border border-[var(--imin-border)] bg-white/80 backdrop-blur focus:outline-none focus:ring-2 focus:ring-[var(--imin-navy)]/30 focus:border-[var(--imin-navy)]/40">
+            </label>
+            <template x-if="authForm.error">
+              <div class="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                   x-text="authForm.error"></div>
+            </template>
+            <button type="submit"
+                    :disabled="authForm.saving || !authForm.token"
+                    class="btn btn-primary w-full mt-5 justify-center">
+              <span x-show="!authForm.saving">Войти</span>
+              <span x-show="authForm.saving">Сохраняю…</span>
+            </button>
+          </form>
+          <p class="text-xs text-[var(--imin-text-subtle)] mt-5 leading-relaxed">
+            Токен хранится локально в этом браузере (localStorage). Если работаете на чужом компьютере — нажмите "Выйти" в шапке после завершения работы.
+          </p>
+        </div>
+      </div>
+    </template>
+
     <!-- Routed content -->
-    <template x-if="!loading && !error">
+    <template x-if="!loading && !error && screen !== 'auth'">
       <div>
         <!-- Header — logo + campaign + progress -->
         <header class="glass-header sticky top-0 z-30">
@@ -85,6 +132,14 @@
                 <span x-text="state.progress.total"></span>
               </div>
             </div>
+            <template x-if="apiMode === 'real' && hasToken">
+              <button type="button"
+                      @click="logout()"
+                      class="btn btn-ghost shrink-0"
+                      title="Удалить токен из этого браузера">
+                Выйти
+              </button>
+            </template>
           </div>
           <div class="progress-track">
             <div class="progress-fill"
