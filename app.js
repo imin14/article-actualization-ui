@@ -378,6 +378,29 @@ window.appRoot = function () {
       this.screen = 'search';
     },
 
+    // Open the search form with the current campaign's id (and saved config
+    // if available) pre-filled. Workflow's per-story dedup makes this safe
+    // — already-scanned stories will be skipped on the second run.
+    goToSearchForResume() {
+      this._resumePrefill = null;
+      if (this.state && this.state.campaign) {
+        const cid = this.state.campaign.id;
+        const cfg = getCampaignConfig(cid) || {};
+        this._resumePrefill = {
+          campaign_topic: cfg.campaign_topic || (this.state.campaign.topic || ''),
+          campaign_id: cid,
+          keyword: cfg.keyword || '',
+          context_description: cfg.context_description || '',
+          source_locale: cfg.source_locale || (this.state.campaign.source_locale || 'ru'),
+          folder: cfg.folder || '',
+          content_type: cfg.content_type || 'flatArticle',
+          rewrite_prompt: cfg.rewrite_prompt || '',
+          dry_run: cfg.dry_run !== false,
+        };
+      }
+      this.screen = 'search';
+    },
+
     async submitAction(payload) {
       // Optimistic update
       const idx = this.state.blocks.findIndex(b => b.row_id === payload.row_id);
@@ -1061,6 +1084,17 @@ window.searchScreen = function () {
       proposed: 0,
     },
     error: null,
+
+    init() {
+      // When opened via "Запустить заново" from a campaign view, the appRoot
+      // stashed a prefill object in _resumePrefill. Pull it in once and clear.
+      const root = getAppRootScope();
+      const prefill = root && root._resumePrefill;
+      if (prefill) {
+        for (const k of Object.keys(prefill)) this.form[k] = prefill[k];
+        if (root) root._resumePrefill = null;
+      }
+    },
 
     /** Generate a default campaign_id from topic + today, slug-style. */
     suggestedCampaignId() {
