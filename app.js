@@ -45,7 +45,10 @@ function clearStoredToken() {
 
 const urlToken = params.get('t');
 if (urlToken) {
-  writeStoredToken(urlToken);
+  // Strip a leading "Bearer " in case the onboarding link was built with the
+  // full credential value rather than just the secret. SPA prepends "Bearer "
+  // itself, so doubling would produce 403.
+  writeStoredToken(urlToken.trim().replace(/^bearer\s+/i, ''));
   params.delete('t');
   const newSearch = params.toString();
   const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
@@ -122,7 +125,11 @@ window.appRoot = function () {
     },
 
     async submitAuthToken() {
-      const t = String(this.authForm.token || '').trim();
+      // Strip a leading "Bearer " if the editor copy-pasted the entire
+      // credential value from n8n (which already includes "Bearer "). The
+      // SPA prepends "Bearer " itself when sending the request, so storing
+      // it again here would produce "Bearer Bearer ..." and 403.
+      const t = String(this.authForm.token || '').trim().replace(/^bearer\s+/i, '');
       if (!t) {
         this.authForm.error = 'Введите токен';
         return;
@@ -130,7 +137,6 @@ window.appRoot = function () {
       this.authForm.saving = true;
       this.authForm.error = '';
       writeStoredToken(t);
-      // Reload so the SPA re-bootstraps with the new token cleanly.
       window.location.reload();
     },
 
