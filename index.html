@@ -198,6 +198,10 @@
                             'badge-neutral': campaignStatus(c).tone === 'neutral'
                           }"
                           x-text="campaignStatus(c).label"></span>
+                    <button type="button"
+                            class="text-[var(--imin-text-subtle)] hover:text-red-600 transition-colors text-xl leading-none px-1"
+                            :title="t('campaigns.delete.button_title')"
+                            @click.stop="openDeleteCampaign(c.id)">×</button>
                     <svg class="w-4 h-4 text-[var(--imin-text-subtle)] transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                   </div>
                 </div>
@@ -1125,6 +1129,38 @@
       </div>
     </template>
 
+    <!-- Delete campaign modal -->
+    <div x-show="deleteCampaignTarget"
+         x-transition.opacity
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="delete-campaign-title"
+         class="modal-backdrop"
+         @click.self="closeDeleteCampaign()">
+      <div class="modal-panel max-w-lg" @click.stop>
+        <h3 id="delete-campaign-title" class="text-lg font-semibold mb-2" x-text="t('campaigns.delete.title')"></h3>
+        <p class="text-sm text-[var(--imin-text-muted)] mb-3" x-text="t('campaigns.delete.body')"></p>
+        <div class="rounded-md bg-[var(--imin-bg)] border border-[var(--imin-border)] p-3 mb-3 font-mono text-xs break-all" x-text="deleteCampaignTarget"></div>
+        <label class="block">
+          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block" x-text="t('campaigns.delete.confirm_label')"></span>
+          <input type="text" x-model="deleteCampaignTyped"
+                 class="edit-textarea font-mono text-xs"
+                 :placeholder="deleteCampaignTarget"
+                 @keydown.enter="confirmDeleteCampaign()">
+        </label>
+        <template x-if="deleteCampaignError">
+          <div class="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5" x-text="deleteCampaignError"></div>
+        </template>
+        <div class="flex justify-end gap-2 mt-4">
+          <button class="btn btn-ghost" @click="closeDeleteCampaign()" :disabled="deleteCampaignBusy" x-text="t('common.cancel')"></button>
+          <button class="btn btn-danger"
+                  :disabled="deleteCampaignBusy || deleteCampaignTyped.trim() !== deleteCampaignTarget"
+                  @click="confirmDeleteCampaign()"
+                  x-text="deleteCampaignBusy ? t('campaigns.delete.submitting') : t('campaigns.delete.submit')"></button>
+        </div>
+      </div>
+    </div>
+
     <!-- Publish (cascade) modal — opened from overview's "🚀 Опубликовать" button -->
     <div x-show="publishModalOpen"
          x-transition.opacity
@@ -1285,6 +1321,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=29"></script>
+  <script type="module" src="app.js?v=30"></script>
 </body>
 </html>

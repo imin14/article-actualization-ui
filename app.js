@@ -444,6 +444,49 @@ window.appRoot = function () {
       window.location.search = params.toString();
     },
 
+    // Per-campaign delete confirm state. campaign_id → typed value.
+    deleteCampaignTarget: null,
+    deleteCampaignTyped: '',
+    deleteCampaignBusy: false,
+    deleteCampaignError: null,
+    openDeleteCampaign(campaignId) {
+      this.deleteCampaignTarget = campaignId;
+      this.deleteCampaignTyped = '';
+      this.deleteCampaignError = null;
+    },
+    closeDeleteCampaign() {
+      this.deleteCampaignTarget = null;
+      this.deleteCampaignTyped = '';
+      this.deleteCampaignError = null;
+    },
+    async confirmDeleteCampaign() {
+      const cid = this.deleteCampaignTarget;
+      if (!cid) return;
+      if (this.deleteCampaignTyped.trim() !== cid) {
+        this.deleteCampaignError = this.t('campaigns.delete.typed_mismatch');
+        return;
+      }
+      this.deleteCampaignBusy = true;
+      this.deleteCampaignError = null;
+      try {
+        await api.deleteCampaign(cid);
+        // Drop locally cached config + content for that campaign.
+        try {
+          const all = readCampaignConfigs();
+          delete all[cid];
+          localStorage.setItem(CAMPAIGN_CONFIGS_KEY, JSON.stringify(all));
+        } catch {}
+        delete this.storyContentCache[cid];
+        this.closeDeleteCampaign();
+        await this.loadCampaigns();
+      } catch (e) {
+        if (isAuthFailure(e)) { handleAuthFailure(); return; }
+        this.deleteCampaignError = String(e.message || e);
+      } finally {
+        this.deleteCampaignBusy = false;
+      }
+    },
+
     goToCampaigns() {
       this.screen = 'campaigns';
       if (!this.campaigns.length) this.loadCampaigns();
