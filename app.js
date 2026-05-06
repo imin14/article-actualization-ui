@@ -1,6 +1,6 @@
 import Alpine from 'alpinejs';
 import { createAPIClient } from './lib/api.js';
-import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, NOT_REVIEWED } from './lib/state.js';
+import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, NOT_REVIEWED, REVIEWED } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
 import { nextFocusable, prevFocusable } from './lib/focus.js';
 
@@ -17,23 +17,24 @@ function getAppRootScope() {
 
 // === Configuration ===
 // API config is read from URL query params:
-//   ?campaign=<campaign_id>          — required for real campaigns; defaults to mock fixture
-//   ?api=<n8n base URL>              — when present, switches to real client; absent = mock mode
-//   ?t=<bearer token>                — one-time onboarding token; saved to localStorage
-//                                      and scrubbed from URL on first load.
+//   ?campaign=<campaign_id>   — opens a specific campaign view
+//   ?api=<n8n base URL>       — overrides the default production API
+//   ?t=<bearer token>         — one-time onboarding token; saved to localStorage
+//                               and scrubbed from URL on first load.
 //
-// Without ?api=, the app runs against the in-memory mock for local development.
+// Default API points at the production n8n instance — there is no mock mode.
+const PRODUCTION_API_BASE_URL = 'https://n8n-prod-960265555894.europe-west3.run.app';
+
 const params = new URLSearchParams(window.location.search);
 const CAMPAIGN_ID_PARAM = params.get('campaign');
-const CAMPAIGN_ID = CAMPAIGN_ID_PARAM || 'cmp-portugal-2026-05-04';
+const CAMPAIGN_ID = CAMPAIGN_ID_PARAM || '';
 // True only when the URL explicitly named a campaign — otherwise the editor
 // is just landing on the SPA to start a new one and we should skip the
 // auto-load (which would otherwise hit a non-existent campaign and show a
 // confusing error toast).
 const HAS_EXPLICIT_CAMPAIGN = !!CAMPAIGN_ID_PARAM;
 
-const API_BASE_URL = params.get('api') || '';
-const API_MODE = API_BASE_URL ? 'real' : 'mock';
+const API_BASE_URL = params.get('api') || PRODUCTION_API_BASE_URL;
 
 // Token lives in localStorage so it doesn't sit in the URL bar / history /
 // referer / shared links. The URL `?t=...` form is for one-time onboarding —
@@ -90,7 +91,6 @@ let CURRENT_TOKEN = readStoredToken();
 const API_TOKEN = CURRENT_TOKEN; // legacy alias used elsewhere in this file
 
 const api = createAPIClient({
-  mode: API_MODE,
   baseURL: API_BASE_URL,
   getToken: () => CURRENT_TOKEN,
 });
@@ -115,11 +115,10 @@ window.appRoot = function () {
     globalError: null,
     state: null,        // CampaignState from API
     groups: [],         // grouped by story
-    // 'auth' shown when API_MODE='real' but no token in storage. The auth
-    // screen is the only way in — every other screen requires a valid token.
+    // 'auth' shown when no token in storage. The auth screen is the only way
+    // in — every other screen requires a valid token.
     screen: 'overview', // 'auth' | 'campaigns' | 'overview' | 'story' | 'done' | 'search'
     currentStoryId: null,
-    apiMode: API_MODE,
     hasToken: !!CURRENT_TOKEN,
     authForm: { token: '', error: '', saving: false },
     campaigns: [],
@@ -137,17 +136,16 @@ window.appRoot = function () {
     _blocksEditing: new Set(),
 
     async init() {
-      // Auth gate: real mode without a token sends the user straight to the
-      // auth screen. We never hit the API in that state, so an empty token
-      // can't trigger a 401 cascade.
-      if (this.apiMode === 'real' && !this.hasToken) {
+      // Auth gate: no token → straight to the auth screen. We never hit the
+      // API in that state, so an empty token can't trigger a 401 cascade.
+      if (!this.hasToken) {
         this.screen = 'auth';
         this.loading = false;
         return;
       }
-      // Real mode with no explicit ?campaign= → land on campaigns picker.
-      // Editor either resumes an existing campaign or kicks off a new search.
-      if (this.apiMode === 'real' && !HAS_EXPLICIT_CAMPAIGN) {
+      // No explicit ?campaign= → land on campaigns picker. Editor either
+      // resumes an existing campaign or kicks off a new search.
+      if (!HAS_EXPLICIT_CAMPAIGN) {
         this.screen = 'campaigns';
         this.loading = false;
         this.loadCampaigns();
@@ -155,19 +153,14 @@ window.appRoot = function () {
       }
       try {
         await this.refresh();
-        // Background-load campaigns list so the header's prev/next campaign
-        // buttons have something to navigate. Failures are silent — they only
-        // affect cross-campaign nav, not the current campaign view.
-        if (this.apiMode === 'real') {
-          this.loadCampaigns().catch(() => {});
-          // Quiet polling so the "Search status" indicator transitions from
-          // running → idle on its own, and new blocks materialise as they
-          // get inserted. Only polls when the user is on a campaign view
-          // (story or overview screen) — auth and search forms are skipped.
-          this._startStatusPolling();
-        }
+        this.loadCampaigns().catch(() => {});
+        // Quiet polling so the "Search status" indicator transitions from
+        // running → idle on its own, and new blocks materialise as they
+        // get inserted. Only polls when the user is on a campaign view
+        // (story or overview screen) — auth and search forms are skipped.
+        this._startStatusPolling();
       } catch (e) {
-        if (this.apiMode === 'real' && isAuthFailure(e)) {
+        if (isAuthFailure(e)) {
           handleAuthFailure();
           return;
         }
@@ -204,7 +197,7 @@ window.appRoot = function () {
         const list = await api.listCampaigns();
         this.campaigns = list || [];
       } catch (e) {
-        if (this.apiMode === 'real' && isAuthFailure(e)) {
+        if (isAuthFailure(e)) {
           handleAuthFailure();
           return;
         }
@@ -250,7 +243,6 @@ window.appRoot = function () {
       return ageMs >= 0 && ageMs < this.runningThresholdMs;
     },
     get searchStatusLabel() {
-      if (this.apiMode !== 'real') return 'mock';
       if (this.isSearchRunning) return 'running';
       if (!this.state || !this.state.blocks || this.state.blocks.length === 0) return 'empty';
       return 'idle';
@@ -301,6 +293,226 @@ window.appRoot = function () {
         this.resumeError = String(e.message || e);
       } finally {
         this.resumeBusy = false;
+      }
+    },
+
+    // ─── Cascade publish + rollback ─────────────────────────────
+    //
+    // After every block is reviewed (status in {accepted, edited, skipped,
+    // deleted}), the editor publishes the campaign — pushes accepted/edited
+    // blocks to Storyblok and triggers translation cascade. Cascade is
+    // backed by snapshots so individual stories or the whole campaign can
+    // be rolled back from the SPA.
+
+    publishModalOpen: false,
+    // Phase 2A: cascade pushes ONLY the source-locale (RU master) update via
+    // Storyblok mAPI. Translations are intentionally NOT in this phase —
+    // they will land in Phase 2B as a separate trigger to Turkey Blocks
+    // Generator workflow.
+    publishImmediately: false,     // false = draft (default, safe), true = publish immediately
+    publishBusy: false,
+    publishError: null,
+    publishMessage: null,
+
+    /** True iff every block in the campaign has been decided by the editor.
+     *  proposed/proposed_delete/pending/error all count as "still needs review". */
+    get readyToPublish() {
+      const p = this.state && this.state.progress;
+      if (!p || p.total === 0) return false;
+      return p.reviewed >= p.total;
+    },
+    /** A row is "currently published" iff it was cascaded AND not since
+     *  rolled back (rolled_back_at <= cascaded_at, or no rolled_back_at).
+     *  We can't clear cascaded_at on rollback (n8n DataTable rejects empty
+     *  strings on date cols), so we infer state by comparing timestamps. */
+    isCurrentlyPublished(b) {
+      if (!b.cascaded_at) return false;
+      if (!b.rolled_back_at) return true;
+      return new Date(b.rolled_back_at).getTime() < new Date(b.cascaded_at).getTime();
+    },
+    /** True when at least one decided-but-not-currently-published block
+     *  exists. Drives the "publish" banner. Partial publish is allowed:
+     *  editor doesn't have to wait until the whole campaign is reviewed.
+     *  Rolled-back rows naturally land here because they're not currently
+     *  published (rolled_back_at > cascaded_at). */
+    get hasPublishableRows() {
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      return blocks.some(b => ['accepted','edited','deleted'].includes(b.status) && !this.isCurrentlyPublished(b));
+    },
+    /** Count of decided-but-not-currently-published blocks (banner display). */
+    get publishableRowCount() {
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      return blocks.filter(b => ['accepted','edited','deleted'].includes(b.status) && !this.isCurrentlyPublished(b)).length;
+    },
+    /** Count of blocks still awaiting editor decision (shown in partial-publish banner). */
+    get unreviewedRowCount() {
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      const NOT_DONE = new Set(['pending', 'proposed', 'proposed_delete', 'error']);
+      return blocks.filter(b => NOT_DONE.has(b.status)).length;
+    },
+    /** Some stories currently published (drives campaign-rollback banner). */
+    get hasCascadedRows() {
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      return blocks.some(b => this.isCurrentlyPublished(b));
+    },
+    /** All actionable rows currently published. */
+    get fullyCascaded() {
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      const actionable = blocks.filter(b => ['accepted','edited','deleted'].includes(b.status));
+      if (actionable.length === 0) return false;
+      return actionable.every(b => this.isCurrentlyPublished(b));
+    },
+    /** story_id -> { cascaded, locales, has_snapshot, partial, translation }
+     *  for overview badges + rollback buttons + planet emoji.
+     *
+     *  translation: aggregated metadata for the planet tooltip:
+     *    { status, source, target_locales, locale_counts, triggered_at, age_minutes }
+     *    status ∈ {none, queued, triggered, no_targets, skipped, stale}
+     *    - 'none' means cascade_locale_results unset
+     *    - 'queued' set by Mark rows cascaded right after PUT
+     *    - 'triggered' set by WF-Translate after Turkey fired
+     *    - 'no_targets' set by WF-Translate when no locales meet threshold
+     *    - 'stale' = triggered, but >10 min ago AND status hasn't moved on
+     *      (heuristic for "Turkey probably failed silently — offer retry") */
+    get cascadeStateByStory() {
+      const out = {};
+      const blocks = this.state && this.state.blocks ? this.state.blocks : [];
+      const STALE_MS = 10 * 60 * 1000;
+      const now = Date.now();
+      for (const b of blocks) {
+        if (!out[b.story_id]) out[b.story_id] = { cascaded: false, locales: null, has_snapshot: false, has_publishable: false, translation: null };
+        const s = out[b.story_id];
+        const published = this.isCurrentlyPublished(b);
+        if (published) s.cascaded = true;
+        if (b.has_snapshot) s.has_snapshot = true;
+        if (b.cascade_locale_results && !s.translation) {
+          const r = b.cascade_locale_results;
+          let status = r.translation_status || 'none';
+          // Stale = triggered but Turkey hasn't reported back in a while.
+          // (We can't *know* — heuristic only. Lets user retry safely.)
+          if (status === 'triggered' || status === 'queued') {
+            const t = r.translation_triggered_at || b.cascaded_at;
+            if (t) {
+              const ageMs = now - new Date(t).getTime();
+              if (ageMs > STALE_MS) status = 'stale';
+            }
+          }
+          s.translation = {
+            status,
+            source: r.source || null,
+            target_locales: r.target_locales || [],
+            locale_counts: r.locale_counts || {},
+            triggered_at: r.translation_triggered_at || null,
+            published: r.published === true,
+          };
+        }
+        if (b.cascade_locale_results && !s.locales) s.locales = b.cascade_locale_results;
+        if (['accepted','edited','deleted'].includes(b.status) && !published) s.has_publishable = true;
+      }
+      for (const k of Object.keys(out)) {
+        out[k].partial = out[k].cascaded && out[k].has_publishable;
+      }
+      return out;
+    },
+
+    openPublishModal() {
+      this.publishImmediately = false;   // default safe: draft
+      this.publishError = null;
+      this.publishMessage = null;
+      this.publishModalOpen = true;
+    },
+    closePublishModal() {
+      this.publishModalOpen = false;
+    },
+    async confirmPublish() {
+      if (!this.state || !this.state.campaign) return;
+      this.publishBusy = true;
+      this.publishError = null;
+      try {
+        const res = await api.cascadeTrigger({
+          campaign_id: this.state.campaign.id,
+          publish: this.publishImmediately,
+        });
+        const mode = this.publishImmediately ? 'опубликован' : 'сохранён как draft';
+        this.publishMessage = `Cascade запущен: контент ${mode}. ${res.queued ? 'Ждём бэк (полминуты-минута).' : ''}`;
+        this.publishModalOpen = false;
+        // Force immediate refresh so the cascade banner appears asap; further
+        // updates ride on the existing 8s polling interval.
+        setTimeout(() => { this.refresh().catch(() => {}); }, 5000);
+      } catch (e) {
+        if (isAuthFailure(e)) { handleAuthFailure(); return; }
+        this.publishError = String(e.message || e);
+      } finally {
+        this.publishBusy = false;
+      }
+    },
+
+    /** Roll back one story (or the entire campaign if storyId is omitted). */
+    async rollbackStory(storyId) {
+      if (!this.state || !this.state.campaign) return;
+      const ok = confirm(storyId
+        ? `Откатить story ${storyId} в Storyblok к состоянию до публикации?`
+        : `Откатить ВСЮ кампанию в Storyblok к состоянию до публикации? Это затронет все опубликованные stories.`);
+      if (!ok) return;
+      this.publishBusy = true;
+      this.publishError = null;
+      try {
+        const payload = { campaign_id: this.state.campaign.id };
+        if (storyId) payload.story_id = String(storyId);
+        await api.cascadeRollback(payload);
+        this.publishMessage = storyId ? 'Story откачена.' : 'Кампания откачена.';
+        setTimeout(() => { this.refresh().catch(() => {}); }, 3000);
+      } catch (e) {
+        if (isAuthFailure(e)) { handleAuthFailure(); return; }
+        this.publishError = String(e.message || e);
+      } finally {
+        this.publishBusy = false;
+      }
+    },
+
+    /** Trigger / re-trigger translation for one cascaded story. Idempotent:
+     *  the translate workflow detects current state and re-fires Turkey. */
+    async retryTranslation(storyId) {
+      if (!this.state || !this.state.campaign || !storyId) return;
+      this.publishBusy = true;
+      this.publishError = null;
+      try {
+        await api.translateStory({
+          campaign_id: this.state.campaign.id,
+          story_id: String(storyId),
+        });
+        this.publishMessage = 'Перевод триггернут.';
+        setTimeout(() => { this.refresh().catch(() => {}); }, 3000);
+      } catch (e) {
+        if (isAuthFailure(e)) { handleAuthFailure(); return; }
+        this.publishError = String(e.message || e);
+      } finally {
+        this.publishBusy = false;
+      }
+    },
+
+    /** Roll back ONE block to its pre-cascade state. Storyblok story is
+     *  fetched fresh, the block is found by _uid, replaced with snapshot
+     *  version, and PUT'd back. Other blocks of the same story (whether
+     *  cascaded or not) are left untouched. */
+    async rollbackBlock(rowId) {
+      if (!this.state || !this.state.campaign || !rowId) return;
+      const ok = confirm('Откатить этот блок к состоянию до публикации? Остальные блоки story не тронем.');
+      if (!ok) return;
+      this.publishBusy = true;
+      this.publishError = null;
+      try {
+        await api.cascadeRollback({
+          campaign_id: this.state.campaign.id,
+          row_id: String(rowId),
+        });
+        this.publishMessage = 'Блок откачен.';
+        setTimeout(() => { this.refresh().catch(() => {}); }, 2000);
+      } catch (e) {
+        if (isAuthFailure(e)) { handleAuthFailure(); return; }
+        this.publishError = String(e.message || e);
+      } finally {
+        this.publishBusy = false;
       }
     },
 
@@ -427,7 +639,7 @@ window.appRoot = function () {
           }
         }
       } catch (e) {
-        if (this.apiMode === 'real' && isAuthFailure(e)) {
+        if (isAuthFailure(e)) {
           handleAuthFailure();
           return;
         }
@@ -634,6 +846,7 @@ window.appRoot = function () {
       const key = event.key;
       const focused = this.focusedBlock;
       const focusable = focused && NOT_REVIEWED.has(focused.status);
+      const revertable = focused && REVIEWED.has(focused.status);
 
       if (key === 'j' || key === 'ArrowDown') {
         this.focusNextBlock();
@@ -680,6 +893,14 @@ window.appRoot = function () {
       } else if (key === 'd') {
         if (focused && focusable) {
           this._dispatchRowAction(focused.row_id, 'delete');
+          event.preventDefault();
+        }
+      } else if (key === 'u') {
+        // Undo / revert. Only meaningful on already-reviewed blocks; for
+        // pending/proposed blocks the equivalent is just "make a different
+        // choice" — there's nothing to undo yet.
+        if (focused && revertable) {
+          this._dispatchRowAction(focused.row_id, 'revert');
           event.preventDefault();
         }
       } else if (key === 'n') {
@@ -730,16 +951,17 @@ window.overviewScreen = function () {
   return {
     init() {},
     storyBadges(group) {
-      const counts = { pending: 0, proposed: 0, accepted: 0, edited: 0, skipped: 0, deleted: 0, error: 0 };
+      const counts = { pending: 0, proposed: 0, proposed_delete: 0, accepted: 0, edited: 0, skipped: 0, deleted: 0, error: 0 };
       for (const b of group.blocks) counts[b.status] = (counts[b.status] || 0) + 1;
       const out = [];
       const needsAction = counts.pending + counts.proposed;
-      if (needsAction)     out.push({ label: 'pending',  count: needsAction,     classes: 'bg-amber-100 text-amber-800' });
-      if (counts.accepted) out.push({ label: 'accepted', count: counts.accepted, classes: 'bg-emerald-100 text-emerald-800' });
-      if (counts.edited)   out.push({ label: 'edited',   count: counts.edited,   classes: 'bg-emerald-100 text-emerald-800' });
-      if (counts.skipped)  out.push({ label: 'skipped',  count: counts.skipped,  classes: 'bg-slate-200 text-slate-700' });
-      if (counts.deleted)  out.push({ label: 'deleted',  count: counts.deleted,  classes: 'bg-red-100 text-red-800' });
-      if (counts.error)    out.push({ label: 'error',    count: counts.error,    classes: 'bg-red-100 text-red-800' });
+      if (needsAction)             out.push({ label: 'pending',     count: needsAction,             classes: 'bg-amber-100 text-amber-800' });
+      if (counts.proposed_delete)  out.push({ label: 'to remove',   count: counts.proposed_delete,  classes: 'bg-red-100 text-red-800' });
+      if (counts.accepted)         out.push({ label: 'accepted',    count: counts.accepted,         classes: 'bg-emerald-100 text-emerald-800' });
+      if (counts.edited)           out.push({ label: 'edited',      count: counts.edited,           classes: 'bg-emerald-100 text-emerald-800' });
+      if (counts.skipped)          out.push({ label: 'skipped',     count: counts.skipped,          classes: 'bg-slate-200 text-slate-700' });
+      if (counts.deleted)          out.push({ label: 'deleted',     count: counts.deleted,          classes: 'bg-red-100 text-red-800' });
+      if (counts.error)            out.push({ label: 'error',       count: counts.error,            classes: 'bg-red-100 text-red-800' });
       return out;
     },
   };
@@ -785,7 +1007,12 @@ window.storyScreen = function () {
       if (!root) return;
       // Snapshot the row_ids up front so we don't iterate over a mutating
       // group.blocks list while submitAction reassigns root.groups.
-      const pendingRowIds = getPendingBlocksInStory(this.group).map(b => b.row_id);
+      // Exclude `proposed_delete` rows: those are destructive and must be
+      // confirmed individually — bulk-accept would silently delete blocks the
+      // editor didn't read.
+      const pendingRowIds = getPendingBlocksInStory(this.group)
+        .filter(b => b.status !== 'proposed_delete')
+        .map(b => b.row_id);
       if (pendingRowIds.length === 0) return;
 
       this.bulkAccepting = true;
@@ -841,16 +1068,36 @@ window.blockCard = function (rowId) {
       }
       return cur;
     },
+    /** True if proposed/edited differs from original for this field. When false,
+     *  the template surfaces a "⚠ no changes proposed" warning instead of an
+     *  empty-looking diff (which is indistinguishable from the original text). */
+    hasChanges(b, fieldName) {
+      const orig = String(this.getByPath(b?.original_payload, fieldName) ?? '');
+      const proposed = this.getByPath(b?.edited_payload, fieldName)
+        ?? this.getByPath(b?.proposed_payload, fieldName)
+        ?? this.getByPath(b?.original_payload, fieldName);
+      return String(proposed ?? '') !== orig;
+    },
     statusBadgeClasses(status) {
       switch (status) {
-        case 'proposed': return 'bg-amber-100 text-amber-800';
-        case 'accepted': return 'bg-emerald-100 text-emerald-800';
-        case 'edited':   return 'bg-emerald-100 text-emerald-800';
-        case 'skipped':  return 'bg-slate-200 text-slate-700';
-        case 'deleted':  return 'bg-red-100 text-red-800';
-        case 'error':    return 'bg-red-100 text-red-800';
-        default:         return 'bg-slate-100 text-slate-600';
+        case 'proposed':        return 'bg-amber-100 text-amber-800';
+        case 'proposed_delete': return 'bg-red-100 text-red-800';
+        case 'accepted':        return 'bg-emerald-100 text-emerald-800';
+        case 'edited':          return 'bg-emerald-100 text-emerald-800';
+        case 'skipped':         return 'bg-slate-200 text-slate-700';
+        case 'deleted':         return 'bg-red-100 text-red-800';
+        case 'error':           return 'bg-red-100 text-red-800';
+        default:                return 'bg-slate-100 text-slate-600';
       }
+    },
+    /** Mirror of appRoot.isCurrentlyPublished — local copy so per-block
+     *  templates don't have to reach into _root. cascaded_at is sticky in
+     *  the DataTable (n8n date col can't be cleared), so we compare against
+     *  rolled_back_at to know if rollback happened after the cascade. */
+    isPublished(b) {
+      if (!b || !b.cascaded_at) return false;
+      if (!b.rolled_back_at) return true;
+      return new Date(b.rolled_back_at).getTime() < new Date(b.cascaded_at).getTime();
     },
   };
 };
@@ -909,6 +1156,9 @@ window.blockActions = function (rowId) {
           break;
         case 'delete':
           if (targetsMe) this.openDeleteConfirm();
+          break;
+        case 'revert':
+          if (targetsMe) this.onRevert();
           break;
         case 'escape':
           // Broadcast: close any modal this block has open.
@@ -1045,6 +1295,25 @@ window.blockActions = function (rowId) {
       } catch (e) { this.error = String(e.message || e); }
       finally { this.busy = false; }
     },
+
+    /**
+     * Revert (undo) — kicks the block back to `proposed` so the editor can
+     * reconsider. Backend wipes edited_payload + skip_reason as part of the
+     * revert update, so the next decision starts from a clean slate. No
+     * confirmation modal: revert is itself reversible (just re-decide), and
+     * the friction would defeat the purpose.
+     */
+    async onRevert() {
+      this.busy = true;
+      this.error = null;
+      try {
+        await this._root.submitAction({
+          row_id: this.block.row_id,
+          action: 'revert',
+        });
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.busy = false; }
+    },
   };
 };
 
@@ -1066,6 +1335,8 @@ window.searchScreen = function () {
       campaign_topic: '',
       campaign_id: '',
       keyword: '',
+      block_required_keywords: '',
+      article_any_keywords: '',
       context_description: '',
       source_locale: 'ru',
       folder: 'immigrantinvest/new-blog',
@@ -1078,7 +1349,6 @@ window.searchScreen = function () {
     submitted: false,
     queuedCampaignId: null,
     queuedAt: null,
-    isMock: API_MODE !== 'real',
     progress: {
       stage: 'idle', // 'idle' | 'queued' | 'fetching' | 'filtering' | 'rewriting' | 'done'
       stories_scanned: 0,
@@ -1100,7 +1370,10 @@ window.searchScreen = function () {
       }
     },
 
-    /** Generate a default campaign_id from topic + today, slug-style. */
+    /** Generate a default campaign_id from topic + locale + today, slug-style.
+     *  Locale is included so the same topic in EN vs RU gets distinct IDs —
+     *  otherwise reusing the same campaign_id between locales causes the
+     *  workflow's existing-rows lookup to mix data across locales. */
     suggestedCampaignId() {
       const topic = (this.form.campaign_topic || '').toLowerCase();
       const slug = topic
@@ -1108,8 +1381,9 @@ window.searchScreen = function () {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40);
+      const locale = (this.form.source_locale || 'ru').trim();
       const date = new Date().toISOString().slice(0, 10);
-      return `cmp-${slug || 'campaign'}-${date}`;
+      return `cmp-${slug || 'campaign'}-${locale}-${date}`;
     },
 
     canSubmit() {
@@ -1123,6 +1397,8 @@ window.searchScreen = function () {
     fillExample() {
       this.form.campaign_topic = 'Portugal Golden Visa: 5 → 10 years';
       this.form.keyword = '5';
+      this.form.block_required_keywords = 'years';
+      this.form.article_any_keywords = 'Portugal, Golden Visa';
       this.form.context_description = 'Mention of "5 years" specifically as the residency period required to apply for Portuguese citizenship via naturalisation. Ignore other 5-year mentions (program duration, statistics).';
       this.form.source_locale = 'ru';
       this.form.folder = 'immigrantinvest/new-blog';
@@ -1137,10 +1413,10 @@ window.searchScreen = function () {
     },
 
     /**
-     * Mock submission. Simulates the four pipeline phases with realistic
-     * latencies and counters so the operator can preview the experience.
-     * Real wiring will POST the form to a new n8n webhook that triggers
-     * WF-Search-PreProcess.
+     * Submit the search-trigger form to n8n. Returns immediately when n8n
+     * responds with { queued: true, campaign_id, started_at }; the pipeline
+     * (mAPI → substring → LLM filter → LLM rewrite → Data Table insert →
+     * Slack ping) runs in the background.
      */
     async submit() {
       if (!this.canSubmit()) return;
@@ -1152,11 +1428,7 @@ window.searchScreen = function () {
       this.queuedAt = null;
 
       try {
-        if (API_MODE === 'real') {
-          await this._realSubmit();
-        } else {
-          await this._mockSubmit();
-        }
+        await this._realSubmit();
         this.submitted = true;
       } catch (e) {
         this.error = String(e.message || e);
@@ -1165,12 +1437,6 @@ window.searchScreen = function () {
       }
     },
 
-    /**
-     * Real mode — POST form to n8n webhook. Returns immediately when
-     * n8n responds with { queued: true, campaign_id, started_at }.
-     * The pipeline (mAPI → substring → LLM filter → LLM rewrite →
-     * Data Table insert → Slack ping) runs in the background.
-     */
     async _realSubmit() {
       this.progress.stage = 'queued';
       const url = `${API_BASE_URL}/webhook/search-trigger`;
@@ -1216,45 +1482,12 @@ window.searchScreen = function () {
       saveCampaignConfig(this.queuedCampaignId, { ...this.form, campaign_id: this.queuedCampaignId });
     },
 
-    /** Mock mode — simulates the four pipeline phases. Used when no ?api=. */
-    async _mockSubmit() {
-      this.progress = { stage: 'fetching', stories_scanned: 0, blocks_scanned: 0, hits_after_substring: 0, hits_after_llm_filter: 0, proposed: 0 };
-      await this._countUpTo('stories_scanned', 487, 1500);
-      this.progress.blocks_scanned = 487 * 52;
-      this.progress.stage = 'filtering';
-      await new Promise(r => setTimeout(r, 200));
-      await this._countUpTo('hits_after_substring', 4827, 800);
-      await new Promise(r => setTimeout(r, 200));
-      await this._countUpTo('hits_after_llm_filter', 312, 1800);
-      this.progress.stage = 'rewriting';
-      await new Promise(r => setTimeout(r, 200));
-      await this._countUpTo('proposed', 312, 2200);
-      this.progress.stage = 'done';
-      this.queuedCampaignId = this.form.campaign_id;
-      this.queuedAt = new Date().toISOString();
-    },
-
     /** URL pointing the SPA at the campaign that was just queued. */
     reviewQueueUrl() {
       if (!this.queuedCampaignId) return null;
       const u = new URL(window.location.href);
       u.searchParams.set('campaign', this.queuedCampaignId);
       return u.toString();
-    },
-
-    _countUpTo(field, target, durationMs) {
-      return new Promise(resolve => {
-        const start = performance.now();
-        const tick = (now) => {
-          const t = Math.min(1, (now - start) / durationMs);
-          // ease-out
-          const eased = 1 - Math.pow(1 - t, 3);
-          this.progress[field] = Math.round(target * eased);
-          if (t < 1) requestAnimationFrame(tick);
-          else { this.progress[field] = target; resolve(); }
-        };
-        requestAnimationFrame(tick);
-      });
     },
   };
 };

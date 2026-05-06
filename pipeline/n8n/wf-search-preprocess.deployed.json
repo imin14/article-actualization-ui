@@ -1,0 +1,1232 @@
+{
+  "nodes": [
+    {
+      "id": "c9bc3de8-e415-4437-a13e-c1aacfdb1635",
+      "name": "WF-Search-PreProcess Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        896,
+        480
+      ],
+      "parameters": {
+        "formTitle": "Mass Actualization: Search & Pre-Process",
+        "formDescription": "Phase 1 + 1.5 — finds Storyblok blocks affected by a topic.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "campaign_topic",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "campaign_id",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "keyword",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "block_required_keywords",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "article_any_keywords",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "context_description",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "source_locale",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "ru"
+                  },
+                  {
+                    "option": "en"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "folder",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "content_type",
+              "fieldType": "text",
+              "requiredField": false,
+              "defaultValue": "article"
+            },
+            {
+              "fieldLabel": "rewrite_prompt",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "dry_run",
+              "fieldType": "checkbox",
+              "requiredField": false,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "yes"
+                  }
+                ]
+              },
+              "defaultValue": "yes"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "ec1f8dc6-f5a9-473c-aa37-656c3c124fdd"
+    },
+    {
+      "id": "40004b2b-3975-4d09-ab84-732d8015f67b",
+      "name": "Init Campaign Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const SAFETY_DRY_RUN = true;\nconst item = $input.first().json;\nconst topic = String(item.campaign_topic || \"\").trim();\nif (!topic) throw new Error(\"campaign_topic is required\");\nconst keyword = String(item.keyword || \"\").trim();\nif (!keyword) throw new Error(\"keyword is required\");\nconst contextDescription = String(item.context_description || \"\").trim();\nconst rewritePrompt = String(item.rewrite_prompt || \"\").trim();\nif (!contextDescription) throw new Error(\"context_description is required\");\nif (!rewritePrompt) throw new Error(\"rewrite_prompt is required\");\nconst sourceLocale = String(item.source_locale || \"ru\").trim();\nconst folder = String(item.folder || \"\").trim();\nconst contentType = String(item.content_type || \"article\").trim();\nconst userChoseDryRun = Array.isArray(item.dry_run) ? item.dry_run.length > 0 : Boolean(item.dry_run);\nconst dryRunEffective = SAFETY_DRY_RUN || userChoseDryRun;\nfunction parseKeywordList(s) { return String(s || \"\").split(\",\").map(t => t.trim().toLowerCase()).filter(Boolean); }\nconst blockRequiredRaw = String(item.block_required_keywords || \"\").trim();\nconst articleAnyRaw = String(item.article_any_keywords || \"\").trim();\nconst blockRequiredLc = parseKeywordList(blockRequiredRaw);\nconst articleAnyLc = parseKeywordList(articleAnyRaw);\nfunction slugify(s) { return s.toLowerCase().normalize(\"NFKD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/[^a-z0-9]+/g, \"-\").replace(/^-+|-+$/g, \"\").slice(0, 40); }\nconst today = new Date().toISOString().slice(0, 10);\nlet campaignId = String(item.campaign_id || \"\").trim();\nif (!campaignId) campaignId = `cmp-${slugify(topic)}-${today}`;\nconst startedAt = new Date().toISOString();\nreturn [{ json: { safety_dry_run: SAFETY_DRY_RUN, dry_run_effective: dryRunEffective, campaign_id: campaignId, campaign_topic: topic, campaign_started_at: startedAt, keyword: keyword, keyword_lc: keyword.toLowerCase(), block_required_keywords: blockRequiredRaw, article_any_keywords: articleAnyRaw, block_required_keywords_lc: blockRequiredLc, article_any_keywords_lc: articleAnyLc, context_description: contextDescription, rewrite_prompt: rewritePrompt, source_locale: sourceLocale, folder: folder, content_type: contentType } }];"
+      }
+    },
+    {
+      "id": "f039c0b5-2804-470f-a1d2-1a350b5fbdb5",
+      "name": "Get Processed Rows",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        384
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "wgKa7GSxjKjGrwQK",
+          "cachedResultName": "campaign_blocks"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "campaign_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.campaign_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "9a00d08f-f8fe-4e57-a25a-d35750d2a7a1",
+      "name": "Aggregate Processed Story IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $('Init Campaign Meta').first().json;\nconst rows = $input.all();\nconst ids = new Set();\nfor (const r of rows) {\n  const sid = r && r.json && r.json.story_id;\n  if (sid) ids.add(String(sid));\n}\nreturn [{ json: Object.assign({}, meta, { processed_story_ids: Array.from(ids), processed_count: ids.size }) }];"
+      }
+    },
+    {
+      "id": "e7b2a0e8-6af7-4720-b02e-bcc26db26ce8",
+      "name": "Generate Page Numbers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $input.first().json;\nconst MAX_PAGES = 10;\nconst out = [];\nfor (let p = 1; p <= MAX_PAGES; p++) out.push({ json: { page: p, folder: meta.folder, source_locale: meta.source_locale } });\nreturn out;"
+      }
+    },
+    {
+      "id": "a32fada7-ab36-40ea-9cab-06132be8c395",
+      "name": "Storyblok CDN: List Stories",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2016,
+        384
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.storyblok.com/v2/cdn/stories",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "82kxsVsvTpKJldQD7DqCvQtt"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "page",
+              "value": "={{ $json.page }}"
+            },
+            {
+              "name": "starts_with",
+              "value": "={{ $json.folder }}"
+            },
+            {
+              "name": "filter_query[seo.0.originalLanguage][in]",
+              "value": "={{ $json.source_locale }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 400
+            }
+          },
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "1c677dd0-c147-45b5-80bf-f9842a64e6e7",
+      "name": "Flatten Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const pages = $input.all();\nconst out = [];\nfor (const p of pages) {\n  const stories = Array.isArray(p.json && p.json.stories) ? p.json.stories : [];\n  for (const s of stories) {\n    if (!s || !s.content) continue;\n    out.push({ json: {\n      story_id: String(s.id || ''),\n      story_uuid: s.uuid || '',\n      story_full_slug: s.full_slug || s.slug || '',\n      story_name: s.name || '',\n      content: s.content,\n    } });\n  }\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "f3134b1f-3347-4856-943b-8ad4ab8d8a24",
+      "name": "Filter Unprocessed Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const processed = new Set($('Aggregate Processed Story IDs').first().json.processed_story_ids || []);\nconst stories = $input.all();\nconst out = [];\nlet skipped = 0;\nfor (const s of stories) {\n  if (!s || !s.json || !s.json.story_id) continue;\n  if (processed.has(String(s.json.story_id))) { skipped++; continue; }\n  out.push(s);\n}\nconsole.log('[Filter Unprocessed] kept=' + out.length + ' skipped=' + skipped + ' total=' + stories.length);\nreturn out;"
+      }
+    },
+    {
+      "id": "db19f7c9-a929-4989-9ccc-c106f8e44434",
+      "name": "Slice or Mark Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const SLICE_SIZE = 40;\nconst stories = $input.all();\nconst slice = stories.slice(0, SLICE_SIZE);\nconsole.log('[Slice] sliced=' + slice.length + ' of ' + stories.length + ' unprocessed');\nif (slice.length === 0) {\n  return [{ json: { __complete: true, total_processed: 0 } }];\n}\nreturn slice.map(s => ({ json: Object.assign({}, s.json, { __complete: false }) }));"
+      }
+    },
+    {
+      "id": "799f60b3-68a3-43b4-b0fb-fbb44318658f",
+      "name": "Campaign Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2912,
+        384
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.__complete }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "79bbc87c-fb5f-4225-86df-4d6e08cf3b7a",
+      "name": "Slack: Campaign Ready for Review",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        3136,
+        288
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C09KC8MGE4A",
+          "cachedResultName": "translation-reports"
+        },
+        "messageType": "text",
+        "text": "={{ $('Init Campaign Meta').item.json.dry_run_effective ? '[DRY-RUN] ' : '[LIVE] ' }}*Mass Actualization — Campaign Ready for Review*\n*Topic:* {{ $('Init Campaign Meta').item.json.campaign_topic }}\n*Campaign ID:* `{{ $('Init Campaign Meta').item.json.campaign_id }}`\n*Source locale:* `{{ $('Init Campaign Meta').item.json.source_locale }}`\n*Keyword:* `{{ $('Init Campaign Meta').item.json.keyword }}`\n\nOpen the review UI: https://imin.github.io/article-actualization-ui/?api=https://n8n-prod-960265555894.europe-west3.run.app&campaign_id={{ $('Init Campaign Meta').item.json.campaign_id }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "webhookId": "33426417-57b4-485e-a808-2dbdc799889b"
+    },
+    {
+      "id": "7e0c688e-7f1c-4a25-914f-cfa5e68f5c41",
+      "name": "Substring Filter (bulk)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3136,
+        576
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $('Init Campaign Meta').first().json;\nconst stories = $input.all();\nconst keywordLc = meta.keyword_lc;\nconst articleAny = Array.isArray(meta.article_any_keywords_lc) ? meta.article_any_keywords_lc : [];\nconst blockRequired = Array.isArray(meta.block_required_keywords_lc) ? meta.block_required_keywords_lc : [];\n\nfunction walkLeaves(obj, prefix, out) {\n  if (obj === null || obj === undefined) return;\n  if (typeof obj === 'string' || typeof obj === 'number') { out.push({ path: prefix, value: String(obj) }); return; }\n  if (Array.isArray(obj)) { for (let i = 0; i < obj.length; i++) walkLeaves(obj[i], prefix ? `${prefix}.${i}` : String(i), out); return; }\n  if (typeof obj === 'object') {\n    for (const k of Object.keys(obj)) { if (k === '_uid' || k === '_editable' || k === 'component') continue; walkLeaves(obj[k], prefix ? `${prefix}.${k}` : k, out); }\n  }\n}\nfunction walkBlocks(arr, prefix, out) {\n  if (!Array.isArray(arr)) return;\n  for (let i = 0; i < arr.length; i++) {\n    const b = arr[i];\n    if (!b || typeof b !== 'object') continue;\n    const path = prefix ? `${prefix}[${i}]` : `body[${i}]`;\n    if (b._uid && b.component) out.push({ _uid: b._uid, component: b.component, path, payload: b });\n    for (const k of Object.keys(b)) { if (Array.isArray(b[k]) && b[k].length && typeof b[k][0] === 'object') walkBlocks(b[k], `${path}.${k}`, out); }\n  }\n}\nfunction paragraphContext(text, kwLc) {\n  const paras = String(text).split(/\\n\\s*\\n/);\n  const hits = [];\n  for (let i = 0; i < paras.length; i++) {\n    if (paras[i].toLowerCase().includes(kwLc)) {\n      const start = Math.max(0, i - 1);\n      const end = Math.min(paras.length - 1, i + 1);\n      hits.push({ para_index: i, context: paras.slice(start, end + 1).join('\\n\\n') });\n    }\n  }\n  return hits;\n}\nfunction hashPayload(p) {\n  const s = JSON.stringify(p);\n  let h = 0x811c9dc5;\n  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }\n  return ('00000000' + h.toString(16)).slice(-8);\n}\n\nconst out = [];\nlet droppedByArticle = 0;\nlet withMatches = 0;\n\nfor (const item of stories) {\n  const story = item.json;\n  if (!story || !story.story_id) continue;\n\n  if (articleAny.length > 0) {\n    const bodyLc = JSON.stringify(story.content || {}).toLowerCase();\n    const hit = articleAny.some(kw => bodyLc.includes(kw));\n    if (!hit) {\n      droppedByArticle++;\n      out.push({ json: { story_id: story.story_id, story_full_slug: story.story_full_slug, story_name: story.story_name, matches: [], match_count: 0 } });\n      continue;\n    }\n  }\n\n  const blocks = [];\n  walkBlocks(story.content && story.content.body, 'body', blocks);\n  const matched = [];\n  for (const block of blocks) {\n    const leaves = [];\n    walkLeaves(block.payload, '', leaves);\n\n    if (blockRequired.length > 0) {\n      let blockTextLc = '';\n      for (const l of leaves) { if (typeof l.value === 'string') blockTextLc += ' ' + l.value.toLowerCase(); }\n      const allPresent = blockRequired.every(kw => blockTextLc.includes(kw));\n      if (!allPresent) continue;\n    }\n\n    const matchedFields = [];\n    const fieldHits = {};\n    for (const leaf of leaves) {\n      if (typeof leaf.value !== 'string') continue;\n      if (!leaf.value.toLowerCase().includes(keywordLc)) continue;\n      const trimmed = leaf.value.trim();\n      if (/^https?:\\/\\//i.test(trimmed)) continue;\n      if (/^\\d+(?:[.,]\\d+)?$/.test(trimmed)) continue;\n      matchedFields.push(leaf.path);\n      fieldHits[leaf.path] = paragraphContext(leaf.value, keywordLc);\n    }\n    if (matchedFields.length === 0) continue;\n    matched.push({\n      _uid: block._uid,\n      component: block.component,\n      path: block.path,\n      payload: block.payload,\n      affected_fields: matchedFields,\n      field_hits: fieldHits,\n      content_hash: hashPayload(block.payload),\n    });\n  }\n\n  if (matched.length > 0) withMatches++;\n\n  out.push({ json: {\n    story_id: story.story_id,\n    story_full_slug: story.story_full_slug,\n    story_name: story.story_name,\n    matches: matched,\n    match_count: matched.length,\n  } });\n}\n\nconsole.log('[Substring Bulk] processed=' + stories.length + ' droppedByArticle=' + droppedByArticle + ' withMatches=' + withMatches);\nreturn out;"
+      }
+    },
+    {
+      "id": "549a80a1-47a9-499d-9e4f-f8a11232a01e",
+      "name": "Build Self-Trigger Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3584,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $('Init Campaign Meta').first().json;\nreturn [{ json: { campaign_topic: meta.campaign_topic, campaign_id: meta.campaign_id, keyword: meta.keyword, block_required_keywords: meta.block_required_keywords || '', article_any_keywords: meta.article_any_keywords || '', context_description: meta.context_description, source_locale: meta.source_locale, folder: meta.folder, content_type: meta.content_type, rewrite_prompt: meta.rewrite_prompt, dry_run: meta.dry_run_effective } }];"
+      }
+    },
+    {
+      "id": "8e970bb9-4c0e-41e8-9c79-c30e9764c210",
+      "name": "Self-Trigger Next Batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3872,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-prod-960265555894.europe-west3.run.app/webhook/search-trigger",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "text",
+              "neverError": true
+            }
+          }
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "cb6d27a2-5c1f-466a-9483-07fd2809f7ec",
+      "name": "Has matches?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3584,
+        672
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.match_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "44862d37-50c1-47e2-809c-5b54ac78f30e",
+      "name": "LLM Classify + Rewrite",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3808,
+        400
+      ],
+      "parameters": {
+        "promptType": "define",
+        "hasOutputParser": true,
+        "text": "=Story: {{ $json.story_full_slug }}\nTopic: {{ $('Init Campaign Meta').first().json.context_description }}\nKeyword (substring): {{ $('Init Campaign Meta').first().json.keyword }}\nRewrite instruction: {{ $('Init Campaign Meta').first().json.rewrite_prompt }}\n\nMATCHED BLOCKS ({{ $json.match_count }}):\n{{ JSON.stringify(($json.matches || []).map((m, i) => ({ index: i, _uid: m._uid, component: m.component, affected_fields: m.affected_fields, hit_paragraphs: m.field_hits }))) }}\n\nFor EACH block return one verdict object with ALL FOUR fields:\n- index (0..N-1, in input order)\n- match: true|false — does the keyword in surrounding paragraph ACTUALLY refer to the topic? Numbers like \"5 stars\", \"5 minutes\", \"топ-5\", \"5 последних лет\" = false.\n- reason: one short sentence.\n- updated_fields: object — ALWAYS PRESENT. When match=true: keys = entries from affected_fields, values = rewritten text. When match=false: empty object {} (do NOT omit the field).\n\nReturn EXACTLY {{ $json.match_count }} verdicts in input order.",
+        "options": {
+          "systemMessage": "Editorial assistant. Be strict on relevance. Always include updated_fields in every verdict object — empty object {} for match=false. When match=true, apply the rewrite instruction faithfully without new facts; preserve markdown/HTML/footnotes/links/proper nouns; rewrite EVERY occurrence in that field."
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "5612e8b4-0fa1-4444-9b00-818de090c4fc",
+      "name": "OpenRouter (gpt-5.1)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        3824,
+        624
+      ],
+      "parameters": {
+        "model": "openai/gpt-5.1",
+        "options": {}
+      }
+    },
+    {
+      "id": "8889a0cf-0b42-40fe-9adf-333c912ef236",
+      "name": "Verdicts Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3952,
+        624
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdicts\"],\"properties\":{\"verdicts\":{\"type\":\"array\",\"minItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"index\",\"match\",\"reason\",\"updated_fields\"],\"properties\":{\"index\":{\"type\":\"integer\",\"minimum\":0},\"match\":{\"type\":\"boolean\"},\"reason\":{\"type\":\"string\"},\"updated_fields\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}}}}}}",
+        "autoFix": true
+      }
+    },
+    {
+      "id": "293b9b42-6b0a-4daa-b3f5-fd61248cf9dd",
+      "name": "OpenRouter (gpt-4.1, autofix)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        3952,
+        832
+      ],
+      "parameters": {
+        "model": "openai/gpt-4.1",
+        "options": {}
+      }
+    },
+    {
+      "id": "d7d113c4-7c19-4f35-8be8-23f4d42ad9a7",
+      "name": "Build Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4160,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $('Init Campaign Meta').first().json;\nconst story = $('Loop Over Stories').first().json;\nconst upstream = $input.first().json || {};\n\nif (upstream.error || (!upstream.output && !upstream.verdicts)) {\n  const now = new Date().toISOString();\n  const rid = `${meta.campaign_id}__${story.story_id}____sentinel__`;\n  return [{ json: { row_id: rid, campaign_id: meta.campaign_id, campaign_topic: meta.campaign_topic, campaign_started_at: meta.campaign_started_at, source_locale: meta.source_locale, story_id: story.story_id, story_full_slug: story.story_full_slug, story_name: story.story_name, block_uid: '__sentinel__', block_path: '', block_component: '__sentinel__', affected_fields: '[]', original_payload: '{}', original_content_hash: '', llm_match_reason: 'LLM call errored or returned no parseable output', proposed_payload: '{}', status: 'llm_error', updated_at: now } }];\n}\n\nconst parsed = upstream.output || upstream;\nconst verdicts = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];\nconst verdictByIndex = {};\nfor (const v of verdicts) verdictByIndex[v.index] = v;\n\nfunction setByPath(obj, segs, val) {\n  if (segs.length === 0) return;\n  const seg = segs[0];\n  if (segs.length === 1) { if (Array.isArray(obj)) obj[Number(seg)] = val; else obj[seg] = val; return; }\n  const next = Array.isArray(obj) ? obj[Number(seg)] : obj[seg];\n  if (next && typeof next === 'object') setByPath(next, segs.slice(1), val);\n}\nfunction patchPayload(payload, updatedFields) {\n  const out = JSON.parse(JSON.stringify(payload));\n  for (const fieldPath of Object.keys(updatedFields || {})) {\n    const v = updatedFields[fieldPath];\n    if (typeof v !== 'string') continue;\n    setByPath(out, fieldPath.split('.'), v);\n  }\n  return out;\n}\n\nconst matches = Array.isArray(story.matches) ? story.matches : [];\nconst out = [];\nconst now = new Date().toISOString();\nfor (let i = 0; i < matches.length; i++) {\n  const m = matches[i];\n  const v = verdictByIndex[i];\n  if (!v || v.match !== true || !v.updated_fields) continue;\n  const proposedPayload = patchPayload(m.payload, v.updated_fields);\n  const rowId = `${meta.campaign_id}__${story.story_id}__${m._uid}`;\n  out.push({ json: {\n    row_id: rowId,\n    campaign_id: meta.campaign_id,\n    campaign_topic: meta.campaign_topic,\n    campaign_started_at: meta.campaign_started_at,\n    source_locale: meta.source_locale,\n    story_id: story.story_id,\n    story_full_slug: story.story_full_slug,\n    story_name: story.story_name,\n    block_uid: m._uid,\n    block_path: m.path,\n    block_component: m.component,\n    affected_fields: JSON.stringify(m.affected_fields || []),\n    original_payload: JSON.stringify(m.payload),\n    original_content_hash: m.content_hash,\n    llm_match_reason: String(v.reason || '').slice(0, 500),\n    proposed_payload: JSON.stringify(proposedPayload),\n    status: 'proposed',\n    updated_at: now,\n  } });\n}\n\nif (out.length === 0) {\n  const rowId = `${meta.campaign_id}__${story.story_id}____sentinel__`;\n  out.push({ json: {\n    row_id: rowId,\n    campaign_id: meta.campaign_id,\n    campaign_topic: meta.campaign_topic,\n    campaign_started_at: meta.campaign_started_at,\n    source_locale: meta.source_locale,\n    story_id: story.story_id,\n    story_full_slug: story.story_full_slug,\n    story_name: story.story_name,\n    block_uid: '__sentinel__',\n    block_path: '',\n    block_component: '__sentinel__',\n    affected_fields: '[]',\n    original_payload: '{}',\n    original_content_hash: '',\n    llm_match_reason: 'No relevant matches after LLM classification',\n    proposed_payload: '{}',\n    status: 'no_relevant',\n    updated_at: now,\n  } });\n}\nreturn out;"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "d2563d21-cf55-4dcd-93b8-44c2be4586a1",
+      "name": "Insert into campaign_blocks",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4384,
+        832
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "wgKa7GSxjKjGrwQK",
+          "cachedResultName": "campaign_blocks"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_id": "={{ $json.row_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "campaign_topic": "={{ $json.campaign_topic }}",
+            "campaign_started_at": "={{ $json.campaign_started_at }}",
+            "source_locale": "={{ $json.source_locale }}",
+            "story_id": "={{ $json.story_id }}",
+            "story_full_slug": "={{ $json.story_full_slug }}",
+            "story_name": "={{ $json.story_name }}",
+            "block_uid": "={{ $json.block_uid }}",
+            "block_path": "={{ $json.block_path }}",
+            "block_component": "={{ $json.block_component }}",
+            "affected_fields": "={{ $json.affected_fields }}",
+            "original_payload": "={{ $json.original_payload }}",
+            "llm_match_reason": "={{ $json.llm_match_reason }}",
+            "proposed_payload": "={{ $json.proposed_payload }}",
+            "status": "={{ $json.status }}",
+            "updated_at": "={{ $json.updated_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "row_id",
+              "displayName": "row_id",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_topic",
+              "displayName": "campaign_topic",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_started_at",
+              "displayName": "campaign_started_at",
+              "type": "date",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_locale",
+              "displayName": "source_locale",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "story_id",
+              "displayName": "story_id",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "story_full_slug",
+              "displayName": "story_full_slug",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "story_name",
+              "displayName": "story_name",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "block_uid",
+              "displayName": "block_uid",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "block_path",
+              "displayName": "block_path",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "block_component",
+              "displayName": "block_component",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "affected_fields",
+              "displayName": "affected_fields",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_payload",
+              "displayName": "original_payload",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "llm_match_reason",
+              "displayName": "llm_match_reason",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "proposed_payload",
+              "displayName": "proposed_payload",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "type": "date",
+              "removed": false,
+              "required": false,
+              "display": true,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "4e583409-1f10-4c64-96d9-2dcd28b8eae1",
+      "name": "Loop Over Stories",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3360,
+        576
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "df79da33-0ddd-411e-b589-1315f8e7b39d",
+      "name": "Build Sentinel (no matches)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4160,
+        752
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $('Init Campaign Meta').first().json;\nconst story = $input.first().json;\nconst now = new Date().toISOString();\nconst rowId = `${meta.campaign_id}__${story.story_id}____sentinel__`;\nreturn [{ json: {\n  row_id: rowId,\n  campaign_id: meta.campaign_id,\n  campaign_topic: meta.campaign_topic,\n  campaign_started_at: meta.campaign_started_at,\n  source_locale: meta.source_locale,\n  story_id: story.story_id,\n  story_full_slug: story.story_full_slug,\n  story_name: story.story_name,\n  block_uid: '__sentinel__',\n  block_path: '',\n  block_component: '__sentinel__',\n  affected_fields: '[]',\n  original_payload: '{}',\n  original_content_hash: '',\n  llm_match_reason: 'No substring matches in story content',\n  proposed_payload: '{}',\n  status: 'no_matches',\n  updated_at: now,\n} }];"
+      }
+    },
+    {
+      "id": "4cc53856-014f-4585-94d4-fde83f61e9c8",
+      "name": "Search Webhook (SPA)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        384
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "search-trigger",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://imin.github.io,http://localhost:8080"
+        }
+      },
+      "webhookId": "9da3efee-7377-4fd2-b824-2fb22787f8cf"
+    },
+    {
+      "id": "9aa65f04-1cfa-49f2-9d7e-b24f81eaa6c1",
+      "name": "Validate webhook payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const ALLOWED_ORIGINS = ['https://imin.github.io', 'http://localhost:8080'];\nconst DEFAULT_ORIGIN = 'https://imin.github.io';\nconst raw = $input.first().json || {};\nconst body = raw.body || raw;\nconst headers = raw.headers || {};\nconst originHeader = headers.origin || headers.Origin || '';\nconst corsOrigin = ALLOWED_ORIGINS.indexOf(originHeader) >= 0 ? originHeader : DEFAULT_ORIGIN;\nconst required = ['campaign_topic', 'keyword', 'context_description', 'rewrite_prompt'];\nconst missing = required.filter(k => !body[k] || String(body[k]).trim() === '');\nif (missing.length) { return [{ json: { __error: 'missing fields: ' + missing.join(', '), __status: 400, __cors_origin: corsOrigin } }]; }\nconst sourceLocale = String(body.source_locale || 'ru').trim();\nfunction slugify(s) { return s.toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }\nconst today = new Date().toISOString().slice(0, 10);\nlet campaignId = String(body.campaign_id || '').trim();\nif (!campaignId) campaignId = 'cmp-' + slugify(String(body.campaign_topic)) + '-' + today;\nreturn [{ json: { campaign_topic: body.campaign_topic, campaign_id: campaignId, keyword: body.keyword, block_required_keywords: body.block_required_keywords || '', article_any_keywords: body.article_any_keywords || '', context_description: body.context_description, source_locale: sourceLocale, folder: body.folder || '', content_type: body.content_type || 'flatArticle', rewrite_prompt: body.rewrite_prompt, dry_run: body.dry_run !== false, __cors_origin: corsOrigin } }];"
+      }
+    },
+    {
+      "id": "e429c74f-61a7-4475-be0d-82c611850fc8",
+      "name": "Payload ok?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        384
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !$json.__error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d25c1217-f7a0-4d51-ae27-ed39efe38211",
+      "name": "Respond: queued",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        288
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ queued: true, campaign_id: $json.campaign_id || \"\", started_at: new Date().toISOString() }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "={{ $json.__cors_origin || \"https://imin.github.io\" }}"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "dd3f1056-7013-49d4-960e-f443b40c3aff",
+      "name": "Strip __cors_origin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        288
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const validated = $('Validate webhook payload').first().json;\nconst out = Object.assign({}, validated);\ndelete out.__cors_origin; delete out.__error; delete out.__status;\nreturn [{ json: out }];"
+      }
+    },
+    {
+      "id": "ceef4f54-c80d-4b5b-85fe-6ce828ca8353",
+      "name": "Respond: error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        480
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.__error || \"bad request\" }) }}",
+        "options": {
+          "responseCode": "={{ $json.__status || 400 }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "={{ $json.__cors_origin || \"https://imin.github.io\" }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WF-Search-PreProcess Form": {
+      "main": [
+        [
+          {
+            "node": "Init Campaign Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Campaign Meta": {
+      "main": [
+        [
+          {
+            "node": "Get Processed Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Processed Rows": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Processed Story IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Processed Story IDs": {
+      "main": [
+        [
+          {
+            "node": "Generate Page Numbers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Page Numbers": {
+      "main": [
+        [
+          {
+            "node": "Storyblok CDN: List Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Storyblok CDN: List Stories": {
+      "main": [
+        [
+          {
+            "node": "Flatten Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Stories": {
+      "main": [
+        [
+          {
+            "node": "Filter Unprocessed Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Unprocessed Stories": {
+      "main": [
+        [
+          {
+            "node": "Slice or Mark Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice or Mark Complete": {
+      "main": [
+        [
+          {
+            "node": "Campaign Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign Complete?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Campaign Ready for Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Substring Filter (bulk)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Substring Filter (bulk)": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Self-Trigger Body": {
+      "main": [
+        [
+          {
+            "node": "Self-Trigger Next Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has matches?": {
+      "main": [
+        [
+          {
+            "node": "LLM Classify + Rewrite",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Sentinel (no matches)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Classify + Rewrite": {
+      "main": [
+        [
+          {
+            "node": "Build Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter (gpt-5.1)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LLM Classify + Rewrite",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verdicts Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "LLM Classify + Rewrite",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter (gpt-4.1, autofix)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Verdicts Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Rows": {
+      "main": [
+        [
+          {
+            "node": "Insert into campaign_blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert into campaign_blocks": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Stories": {
+      "main": [
+        [
+          {
+            "node": "Build Self-Trigger Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has matches?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sentinel (no matches)": {
+      "main": [
+        [
+          {
+            "node": "Insert into campaign_blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Webhook (SPA)": {
+      "main": [
+        [
+          {
+            "node": "Validate webhook payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate webhook payload": {
+      "main": [
+        [
+          {
+            "node": "Payload ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload ok?": {
+      "main": [
+        [
+          {
+            "node": "Respond: queued",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond: queued": {
+      "main": [
+        [
+          {
+            "node": "Strip __cors_origin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip __cors_origin": {
+      "main": [
+        [
+          {
+            "node": "Init Campaign Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": null,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "name": "Mass Actualization: Search & Pre-Process"
+}

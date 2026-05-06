@@ -2,7 +2,6 @@ import {
   workflow,
   node,
   trigger,
-  sticky,
   newCredential,
   splitInBatches,
   nextBatch,
@@ -13,28 +12,21 @@ import {
 } from '@n8n/workflow-sdk';
 
 // =============================================================================
-// WF-Search-PreProcess (Phase 1 + 1.5) — per-story sequential pipeline
+// WF-Search-PreProcess (Phase 1 + 1.5) — resumable, self-chaining pipeline
 //
-// For each story (sequential, batchSize=1):
-//   1. Check campaign_blocks for existing rows with (campaign_id, story_id).
-//      If any exist, this story was already processed for this campaign → skip.
-//   2. Substring filter over story.content.body — collect matched blocks
-//      with their full _uid, path, payload, hit-paragraphs.
-//   3. If 0 matches → insert sentinel row (status='no_matches'), next story.
-//   4. ONE LLM call: classify each match's relevance AND propose rewrite for
-//      relevant ones, in a single structured-output prompt. Cheaper than
-//      filter+rewrite separately and gives the LLM better context.
-//   5. Build campaign_blocks rows for kept (match=true) blocks. Each row:
-//      - row_id = `${campaign_id}__${story_id}__${block_uid}` — stable PK
-//      - block_uid = Storyblok's stable identifier (survives reorders)
-//      - block_path = informational snapshot (may go stale)
-//      - original_content_hash = sha-1 of original_payload (for stale-detection
-//        at LIVE accept time — when DRY_RUN comes off, accept-handler refetches
-//        the story, finds block by _uid, compares hash; mismatch → 'stale').
-//      - proposed_payload = patched JSON with LLM-suggested updated_fields
-//      - status = 'proposed'
-//      Insert all rows in one DT call. If 0 kept → sentinel 'no_relevant'.
-//   6. Next batch.
+// Each execution processes at most SLICE_SIZE (40) unprocessed stories, then
+// HTTP-POSTs the same campaign config to its own webhook to continue with the
+// next batch. Chain terminates when Filter Unprocessed Stories returns 0 →
+// Campaign Complete? branch fires Slack and stops.
+//
+// Three-tier search filter (cheapest first):
+//   1. Article-level OR (article_any_keywords)  — full-body substring check
+//   2. Block-level AND  (block_required_keywords) — all terms in same block
+//   3. Main keyword substring                    — at least one match in block
+//
+// Substring filter runs ONCE per batch (bulk, all 40 stories). Only matched
+// stories enter the LLM loop; non-matches get sentinel rows inserted so the
+// next chained run skips them.
 //
 // SAFETY_DRY_RUN forced. Read-only on Storyblok (CDN public token).
 // Sentinel rows (block_component='__sentinel__') are filtered out by the SPA's
@@ -54,6 +46,8 @@ const formTrigger = trigger({
         { fieldLabel: 'campaign_topic', fieldType: 'text', requiredField: true },
         { fieldLabel: 'campaign_id', fieldType: 'text', requiredField: false },
         { fieldLabel: 'keyword', fieldType: 'text', requiredField: true },
+        { fieldLabel: 'block_required_keywords', fieldType: 'text', requiredField: false },
+        { fieldLabel: 'article_any_keywords', fieldType: 'text', requiredField: false },
         { fieldLabel: 'context_description', fieldType: 'textarea', requiredField: true },
         { fieldLabel: 'source_locale', fieldType: 'dropdown', requiredField: true, fieldOptions: { values: [{ option: 'ru' }, { option: 'en' }] } },
         { fieldLabel: 'folder', fieldType: 'text', requiredField: false },
@@ -101,8 +95,8 @@ const sourceLocale = String(body.source_locale || 'ru').trim();
 function slugify(s) { return s.toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
 const today = new Date().toISOString().slice(0, 10);
 let campaignId = String(body.campaign_id || '').trim();
-if (!campaignId) campaignId = 'cmp-' + slugify(String(body.campaign_topic)) + '-' + today;
-return [{ json: { campaign_topic: body.campaign_topic, campaign_id: campaignId, keyword: body.keyword, context_description: body.context_description, source_locale: sourceLocale, folder: body.folder || '', content_type: body.content_type || 'flatArticle', rewrite_prompt: body.rewrite_prompt, dry_run: body.dry_run !== false, __cors_origin: corsOrigin } }];` } },
+if (!campaignId) campaignId = 'cmp-' + slugify(String(body.campaign_topic)) + '-' + sourceLocale + '-' + today;
+return [{ json: { campaign_topic: body.campaign_topic, campaign_id: campaignId, keyword: body.keyword, block_required_keywords: body.block_required_keywords || '', article_any_keywords: body.article_any_keywords || '', context_description: body.context_description, source_locale: sourceLocale, folder: body.folder || '', content_type: body.content_type || 'flatArticle', rewrite_prompt: body.rewrite_prompt, dry_run: body.dry_run !== false, __cors_origin: corsOrigin } }];` } },
   output: [{ campaign_topic: 'x', campaign_id: 'cmp-x', keyword: '5', context_description: 'x', source_locale: 'ru', folder: '', content_type: 'flatArticle', rewrite_prompt: 'x', dry_run: true, __cors_origin: 'https://imin.github.io' }],
 });
 
@@ -157,23 +151,34 @@ const folder = String(item.folder || "").trim();
 const contentType = String(item.content_type || "article").trim();
 const userChoseDryRun = Array.isArray(item.dry_run) ? item.dry_run.length > 0 : Boolean(item.dry_run);
 const dryRunEffective = SAFETY_DRY_RUN || userChoseDryRun;
+function parseKeywordList(s) { return String(s || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean); }
+const blockRequiredRaw = String(item.block_required_keywords || "").trim();
+const articleAnyRaw = String(item.article_any_keywords || "").trim();
+const blockRequiredLc = parseKeywordList(blockRequiredRaw);
+const articleAnyLc = parseKeywordList(articleAnyRaw);
 function slugify(s) { return s.toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40); }
 const today = new Date().toISOString().slice(0, 10);
 let campaignId = String(item.campaign_id || "").trim();
-if (!campaignId) campaignId = \`cmp-\${slugify(topic)}-\${today}\`;
+if (!campaignId) campaignId = \`cmp-\${slugify(topic)}-\${sourceLocale}-\${today}\`;
 const startedAt = new Date().toISOString();
-return [{ json: { safety_dry_run: SAFETY_DRY_RUN, dry_run_effective: dryRunEffective, campaign_id: campaignId, campaign_topic: topic, campaign_started_at: startedAt, keyword: keyword, keyword_lc: keyword.toLowerCase(), context_description: contextDescription, rewrite_prompt: rewritePrompt, source_locale: sourceLocale, folder: folder, content_type: contentType } }];` } },
-  output: [{ safety_dry_run: true, dry_run_effective: true, campaign_id: 'cmp-x', campaign_topic: 'x', campaign_started_at: '2026-05-04T22:00:00.000Z', keyword: '5', keyword_lc: '5', context_description: 'x', rewrite_prompt: 'x', source_locale: 'ru', folder: '', content_type: 'article' }],
+return [{ json: { safety_dry_run: SAFETY_DRY_RUN, dry_run_effective: dryRunEffective, campaign_id: campaignId, campaign_topic: topic, campaign_started_at: startedAt, keyword: keyword, keyword_lc: keyword.toLowerCase(), block_required_keywords: blockRequiredRaw, article_any_keywords: articleAnyRaw, block_required_keywords_lc: blockRequiredLc, article_any_keywords_lc: articleAnyLc, context_description: contextDescription, rewrite_prompt: rewritePrompt, source_locale: sourceLocale, folder: folder, content_type: contentType } }];` } },
+  output: [{ safety_dry_run: true, dry_run_effective: true, campaign_id: 'cmp-x', campaign_topic: 'x', campaign_started_at: '2026-05-04T22:00:00.000Z', keyword: '5', keyword_lc: '5', block_required_keywords: 'years', article_any_keywords: 'Portugal, Golden Visa', block_required_keywords_lc: ['years'], article_any_keywords_lc: ['portugal', 'golden visa'], context_description: 'x', rewrite_prompt: 'x', source_locale: 'ru', folder: '', content_type: 'article' }],
 });
 
+// Carry processed_story_ids forward as a comma-separated string so the
+// Storyblok CDN call can pass it via excluding_ids — server-side dedup means
+// pagination ALWAYS returns genuinely-new stories regardless of which IDs
+// were previously processed (no risk of "first page is all done → 0 results").
 const generatePageNumbers = node({
   type: 'n8n-nodes-base.code', version: 2,
   config: { name: 'Generate Page Numbers', position: [480, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $input.first().json;
+const processedIds = Array.isArray(meta.processed_story_ids) ? meta.processed_story_ids : [];
+const excludingIds = processedIds.join(',');
 const MAX_PAGES = 10;
 const out = [];
-for (let p = 1; p <= MAX_PAGES; p++) out.push({ json: { page: p, folder: meta.folder, source_locale: meta.source_locale } });
+for (let p = 1; p <= MAX_PAGES; p++) out.push({ json: { page: p, folder: meta.folder, source_locale: meta.source_locale, excluding_ids: excludingIds } });
 return out;` } },
-  output: [{ page: 1, folder: '', source_locale: 'ru' }],
+  output: [{ page: 1, folder: '', source_locale: 'ru', excluding_ids: '' }],
 });
 
 const fetchStoryblokStories = node({
@@ -184,19 +189,16 @@ const fetchStoryblokStories = node({
     { name: 'page', value: '={{ $json.page }}' },
     { name: 'starts_with', value: '={{ $json.folder }}' },
     { name: 'filter_query[seo.0.originalLanguage][in]', value: '={{ $json.source_locale }}' },
+    { name: 'excluding_ids', value: '={{ $json.excluding_ids }}' },
   ] }, options: {
     timeout: 60000,
     response: { response: { fullResponse: false, responseFormat: 'json', neverError: true } },
-    // Storyblok CDN limits to 6 req/sec. batchSize=1 + 400ms = 2.5 req/sec
-    // leaves headroom for parallel runs sharing the budget.
     batching: { batch: { batchSize: 1, batchInterval: 400 } },
     retry: { maxTries: 3, waitBetweenTries: 2000 },
   } } },
   output: [{ stories: [] }],
 });
 
-// Combine pages, emit ONE item per story so the splitInBatches downstream can
-// loop over them sequentially (batchSize=1).
 const flattenStoriesToList = node({
   type: 'n8n-nodes-base.code', version: 2,
   config: { name: 'Flatten Stories', position: [960, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const pages = $input.all();
@@ -223,61 +225,120 @@ const loopStories = splitInBatches({
   config: { name: 'Loop Over Stories', position: [1200, 0], parameters: { batchSize: 1, options: {} } },
 });
 
-// Look for existing campaign_blocks rows for this (campaign_id, story_id).
-// If any exist, this story was already processed → skip on re-run.
-const checkStoryProcessed = node({
+const fetchProcessedRows = node({
   type: 'n8n-nodes-base.dataTable', version: 1.1,
-  config: { name: 'Check Story Processed', position: [1440, -100], alwaysOutputData: true, parameters: {
+  config: { name: 'Get Processed Rows', position: [480, 100], alwaysOutputData: true, parameters: {
     resource: 'row', operation: 'get',
     dataTableId: { __rl: true, mode: 'id', value: 'wgKa7GSxjKjGrwQK', cachedResultName: 'campaign_blocks' },
     matchType: 'allConditions',
     filters: { conditions: [
-      { keyName: 'campaign_id', condition: 'eq', keyValue: expr('={{ $(\'Init Campaign Meta\').first().json.campaign_id }}') },
-      { keyName: 'story_id', condition: 'eq', keyValue: expr('={{ $json.story_id }}') },
+      { keyName: 'campaign_id', condition: 'eq', keyValue: expr('={{ $json.campaign_id }}') },
     ] },
     returnAll: true,
   } },
-  output: [{ id: 0, row_id: 'x' }],
+  output: [{ id: 0, row_id: 'x', story_id: '12345' }],
 });
 
-// Decide skip vs process. The DataTable.get with alwaysOutputData=true emits
-// at least one item; we count items minus the synthetic empty marker.
-// Using $input.all().length as a proxy: 0 real rows means the get returned
-// nothing and n8n synthesised one empty item — distinguish by checking if
-// $input.first().json has a row_id field.
-const decideSkipStory = node({
+const aggregateProcessedStoryIds = node({
   type: 'n8n-nodes-base.code', version: 2,
-  config: { name: 'Decide Skip', position: [1680, -100], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const items = $input.all().filter(it => it.json && it.json.row_id);
-const story = $('Loop Over Stories').first().json;
-return [{ json: {
-  __skip: items.length > 0,
-  __reason: items.length > 0 ? 'already-processed' : 'fresh',
-  __existing_count: items.length,
-  story_id: story.story_id,
-  story_uuid: story.story_uuid,
-  story_full_slug: story.story_full_slug,
-  story_name: story.story_name,
-  content: story.content,
-} }];` } },
-  output: [{ __skip: false, story_id: '12345', story_full_slug: 'x', story_name: 'x', content: { body: [] } }],
+  config: { name: 'Aggregate Processed Story IDs', position: [480, 200], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $('Init Campaign Meta').first().json;
+const rows = $input.all();
+const ids = new Set();
+for (const r of rows) {
+  const sid = r && r.json && r.json.story_id;
+  if (sid) ids.add(String(sid));
+}
+return [{ json: Object.assign({}, meta, { processed_story_ids: Array.from(ids), processed_count: ids.size }) }];` } },
+  output: [{ campaign_id: 'cmp-x', folder: '', source_locale: 'ru', processed_story_ids: [], processed_count: 0 }],
 });
 
-const skipIfProcessed = ifElse({
+const filterUnprocessedStories = node({
+  type: 'n8n-nodes-base.code', version: 2,
+  config: { name: 'Filter Unprocessed Stories', position: [1080, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const processed = new Set($('Aggregate Processed Story IDs').first().json.processed_story_ids || []);
+const stories = $input.all();
+const out = [];
+let skipped = 0;
+for (const s of stories) {
+  if (!s || !s.json || !s.json.story_id) continue;
+  if (processed.has(String(s.json.story_id))) { skipped++; continue; }
+  out.push(s);
+}
+console.log('[Filter Unprocessed] kept=' + out.length + ' skipped=' + skipped + ' total=' + stories.length);
+return out;` } },
+  output: [{ story_id: '12345', story_full_slug: 'x', story_name: 'x', content: { body: [] } }],
+});
+
+const sliceOrMarkComplete = node({
+  type: 'n8n-nodes-base.code', version: 2,
+  config: { name: 'Slice or Mark Complete', position: [1240, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const SLICE_SIZE = 40;
+const stories = $input.all();
+const slice = stories.slice(0, SLICE_SIZE);
+console.log('[Slice] sliced=' + slice.length + ' of ' + stories.length + ' unprocessed');
+if (slice.length === 0) {
+  return [{ json: { __complete: true, total_processed: 0 } }];
+}
+return slice.map(s => ({ json: Object.assign({}, s.json, { __complete: false }) }));` } },
+  output: [{ story_id: '12345', story_full_slug: 'x', story_name: 'x', content: { body: [] }, __complete: false }],
+});
+
+const isCampaignComplete = ifElse({
   version: 2.2,
-  config: { name: 'Already processed?', position: [1920, -100], parameters: { conditions: { combinator: 'and', options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ leftValue: expr('={{ $json.__skip }}'), rightValue: true, operator: { type: 'boolean', operation: 'equals' } }] } } },
+  config: { name: 'Campaign Complete?', position: [1400, 0], parameters: { conditions: { combinator: 'and', options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ leftValue: expr('={{ $json.__complete }}'), rightValue: true, operator: { type: 'boolean', operation: 'equals' } }] } } },
 });
 
-// Walk THIS one story's content body, find blocks where keyword appears in
-// any string leaf. For each matched block, capture _uid (stable identifier),
-// component, body-relative path (snapshot), affected_fields (paths within
-// the block), hit_paragraphs (with one paragraph of context above/below for
-// the LLM).
-const substringFilterStory = node({
+const buildSelfTriggerBody = node({
   type: 'n8n-nodes-base.code', version: 2,
-  config: { name: 'Substring Filter (per story)', position: [2160, -100], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $('Init Campaign Meta').first().json;
-const story = $input.first().json;
-const keywordLc = meta.keyword_lc;
+  config: { name: 'Build Self-Trigger Body', position: [1400, 600], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $('Init Campaign Meta').first().json;
+return [{ json: { campaign_topic: meta.campaign_topic, campaign_id: meta.campaign_id, keyword: meta.keyword, block_required_keywords: meta.block_required_keywords || '', article_any_keywords: meta.article_any_keywords || '', context_description: meta.context_description, source_locale: meta.source_locale, folder: meta.folder, content_type: meta.content_type, rewrite_prompt: meta.rewrite_prompt, dry_run: meta.dry_run_effective } }];` } },
+  output: [{ campaign_topic: 'x', campaign_id: 'cmp-x', keyword: '5', block_required_keywords: 'years', article_any_keywords: 'Portugal, Golden Visa', context_description: 'x', source_locale: 'ru', folder: '', content_type: 'flatArticle', rewrite_prompt: 'x', dry_run: true }],
+});
 
+const selfTriggerNextBatch = node({
+  type: 'n8n-nodes-base.httpRequest', version: 4.4,
+  config: { name: 'Self-Trigger Next Batch', position: [1640, 600], alwaysOutputData: true, parameters: {
+    method: 'POST',
+    url: 'https://n8n-prod-960265555894.europe-west3.run.app/webhook/search-trigger',
+    authentication: 'genericCredentialType',
+    genericAuthType: 'httpHeaderAuth',
+    sendBody: true,
+    specifyBody: 'json',
+    jsonBody: expr('={{ JSON.stringify($json) }}'),
+    options: { timeout: 30000, response: { response: { fullResponse: false, responseFormat: 'text', neverError: true } } },
+  }, credentials: { httpHeaderAuth: newCredential('Actualization UI Webhook') } },
+  output: [{ ok: true }],
+});
+
+// BULK substring filter — processes ALL stories in this batch in one call.
+// Three-tier filter (cheapest first): article-level OR, block-level AND, main
+// keyword substring. Emits one item per story (preserving order). Each item
+// carries .matches[] (may be empty) and .match_count for downstream routing.
+// FOUR-tier filter (cheapest first), all on text-only content (URLs/asset paths excluded):
+//   0. Locale check — detect actual content language (cyrillic vs latin ratio).
+//      Drops stories whose content language doesn't match meta.source_locale.
+//      This is needed because Storyblok seo.originalLanguage filter is unreliable.
+//   1. Article-level OR (article_any_keywords) — must contain any in actual text.
+//   2. Block-level AND (block_required_keywords) — block must contain all in its text.
+//   3. Main keyword substring — at least one match in block leaves.
+// Block dedup: when walkBlocks emits both parent and child, keep child.
+const substringFilterBulk = node({
+  type: 'n8n-nodes-base.code', version: 2,
+  config: { name: 'Substring Filter (bulk)', position: [1640, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $('Init Campaign Meta').first().json;
+const stories = $input.all();
+const keywordLc = meta.keyword_lc;
+const sourceLocale = String(meta.source_locale || '').toLowerCase();
+const articleAny = Array.isArray(meta.article_any_keywords_lc) ? meta.article_any_keywords_lc : [];
+const blockRequired = Array.isArray(meta.block_required_keywords_lc) ? meta.block_required_keywords_lc : [];
+
+function isTextLeaf(s) {
+  const t = String(s).trim();
+  if (!t) return false;
+  if (/^https?:\\/\\//i.test(t)) return false;
+  if (/^\\/\\//.test(t)) return false;
+  if (/\\.(jpe?g|png|gif|svg|webp|avif|mp4|webm|pdf|woff2?|ttf|css|js|json)(\\?|$)/i.test(t)) return false;
+  if (/^[\\d\\s,.\\-+()%]+$/.test(t)) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)) return false;
+  return true;
+}
 function walkLeaves(obj, prefix, out) {
   if (obj === null || obj === undefined) return;
   if (typeof obj === 'string' || typeof obj === 'number') { out.push({ path: prefix, value: String(obj) }); return; }
@@ -296,11 +357,17 @@ function walkBlocks(arr, prefix, out) {
     for (const k of Object.keys(b)) { if (Array.isArray(b[k]) && b[k].length && typeof b[k][0] === 'object') walkBlocks(b[k], \`\${path}.\${k}\`, out); }
   }
 }
+function escapeRegex(s) { return String(s).replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&'); }
+function isWordBoundedMatch(text, kwLc) {
+  const re = new RegExp('(^|\\\\s)' + escapeRegex(kwLc) + '(\\\\s|$)', 'i');
+  return re.test(text);
+}
 function paragraphContext(text, kwLc) {
+  const re = new RegExp('(^|\\\\s)' + escapeRegex(kwLc) + '(\\\\s|$)', 'i');
   const paras = String(text).split(/\\n\\s*\\n/);
   const hits = [];
   for (let i = 0; i < paras.length; i++) {
-    if (paras[i].toLowerCase().includes(kwLc)) {
+    if (re.test(paras[i])) {
       const start = Math.max(0, i - 1);
       const end = Math.min(paras.length - 1, i + 1);
       hits.push({ para_index: i, context: paras.slice(start, end + 1).join('\\n\\n') });
@@ -309,50 +376,107 @@ function paragraphContext(text, kwLc) {
   return hits;
 }
 function hashPayload(p) {
-  // FNV-1a 32-bit, deterministic, fast. Used for stale-detection at LIVE
-  // accept time — current block content vs original snapshot.
   const s = JSON.stringify(p);
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
   return ('00000000' + h.toString(16)).slice(-8);
 }
-
-const blocks = [];
-walkBlocks(story.content && story.content.body, 'body', blocks);
-const matched = [];
-for (const block of blocks) {
-  const leaves = [];
-  walkLeaves(block.payload, '', leaves);
-  const matchedFields = [];
-  const fieldHits = {};
-  for (const leaf of leaves) {
-    if (typeof leaf.value !== 'string') continue;
-    if (!leaf.value.toLowerCase().includes(keywordLc)) continue;
-    const trimmed = leaf.value.trim();
-    if (/^https?:\\/\\//i.test(trimmed)) continue;
-    if (/^\\d+(?:[.,]\\d+)?$/.test(trimmed)) continue;
-    matchedFields.push(leaf.path);
-    fieldHits[leaf.path] = paragraphContext(leaf.value, keywordLc);
-  }
-  if (matchedFields.length === 0) continue;
-  matched.push({
-    _uid: block._uid,
-    component: block.component,
-    path: block.path,
-    payload: block.payload,
-    affected_fields: matchedFields,
-    field_hits: fieldHits,
-    content_hash: hashPayload(block.payload),
-  });
+function detectLang(content) {
+  const sample = JSON.stringify(content || {}).slice(0, 10000);
+  const cyr = (sample.match(/[а-яёА-ЯЁ]/g) || []).length;
+  const lat = (sample.match(/[a-zA-Z]/g) || []).length;
+  const total = cyr + lat;
+  if (total < 50) return null;
+  if (cyr / total > 0.30) return 'ru';
+  if (lat / total > 0.95) return 'en';
+  return null;
+}
+function emptyResult(story) {
+  return { story_id: story.story_id, story_full_slug: story.story_full_slug, story_name: story.story_name, matches: [], match_count: 0 };
 }
 
-return [{ json: {
-  story_id: story.story_id,
-  story_full_slug: story.story_full_slug,
-  story_name: story.story_name,
-  matches: matched,
-  match_count: matched.length,
-} }];` } },
+const out = [];
+let droppedByLocale = 0;
+let droppedByArticle = 0;
+let withMatches = 0;
+
+for (const item of stories) {
+  const story = item.json;
+  if (!story || !story.story_id) continue;
+
+  if (sourceLocale === 'ru' || sourceLocale === 'en') {
+    const detected = detectLang(story.content);
+    if (detected && detected !== sourceLocale) {
+      droppedByLocale++;
+      console.log('[Substring] LOCALE-FILTER drop story=' + story.story_id + ' (' + story.story_full_slug + ') detected=' + detected + ' expected=' + sourceLocale);
+      out.push({ json: emptyResult(story) });
+      continue;
+    }
+  }
+
+  if (articleAny.length > 0) {
+    const allLeaves = [];
+    walkLeaves(story.content || {}, '', allLeaves);
+    let articleTextLc = '';
+    for (const l of allLeaves) { if (typeof l.value === 'string' && isTextLeaf(l.value)) articleTextLc += ' ' + l.value.toLowerCase(); }
+    const hit = articleAny.some(kw => articleTextLc.includes(kw));
+    if (!hit) {
+      droppedByArticle++;
+      console.log('[Substring] ARTICLE-FILTER drop story=' + story.story_id + ' (' + story.story_full_slug + ')');
+      out.push({ json: emptyResult(story) });
+      continue;
+    }
+  }
+
+  const allBlocks = [];
+  walkBlocks(story.content && story.content.body, 'body', allBlocks);
+  const matchableBlocks = allBlocks.filter(b => !allBlocks.some(c => c !== b && c._uid && b._uid && c._uid.startsWith(b._uid + '-')));
+
+  const matched = [];
+  for (const block of matchableBlocks) {
+    const leaves = [];
+    walkLeaves(block.payload, '', leaves);
+
+    if (blockRequired.length > 0) {
+      let blockTextLc = '';
+      for (const l of leaves) { if (typeof l.value === 'string' && isTextLeaf(l.value)) blockTextLc += ' ' + l.value.toLowerCase(); }
+      const allPresent = blockRequired.every(kw => blockTextLc.includes(kw));
+      if (!allPresent) continue;
+    }
+
+    const matchedFields = [];
+    const fieldHits = {};
+    for (const leaf of leaves) {
+      if (typeof leaf.value !== 'string') continue;
+      if (!isTextLeaf(leaf.value)) continue;
+      if (!isWordBoundedMatch(leaf.value, keywordLc)) continue;
+      matchedFields.push(leaf.path);
+      fieldHits[leaf.path] = paragraphContext(leaf.value, keywordLc);
+    }
+    if (matchedFields.length === 0) continue;
+    matched.push({
+      _uid: block._uid,
+      component: block.component,
+      path: block.path,
+      payload: block.payload,
+      affected_fields: matchedFields,
+      field_hits: fieldHits,
+      content_hash: hashPayload(block.payload),
+    });
+  }
+
+  if (matched.length > 0) withMatches++;
+  out.push({ json: {
+    story_id: story.story_id,
+    story_full_slug: story.story_full_slug,
+    story_name: story.story_name,
+    matches: matched,
+    match_count: matched.length,
+  } });
+}
+
+console.log('[Substring Bulk] processed=' + stories.length + ' droppedByLocale=' + droppedByLocale + ' droppedByArticle=' + droppedByArticle + ' withMatches=' + withMatches);
+return out;` } },
   output: [{ story_id: '12345', story_full_slug: 'x', story_name: 'x', matches: [], match_count: 0 }],
 });
 
@@ -362,23 +486,29 @@ const hasMatches = ifElse({
 });
 
 const llmModel = languageModel({
-  type: '@n8n/n8n-nodes-langchain.lmChatGoogleGemini', version: 1.1,
-  config: { name: 'Gemini Flash', position: [2640, 0], parameters: { modelName: 'models/gemini-2.5-flash', options: { temperature: 0.2, maxOutputTokens: 8192 } }, credentials: { googlePalmApi: newCredential('Google Gemini API') } },
+  type: '@n8n/n8n-nodes-langchain.lmChatOpenRouter', version: 1,
+  config: { name: 'OpenRouter (gpt-5.1)', position: [2640, 0], parameters: { model: 'openai/gpt-5.1', options: {} }, credentials: { openRouterApi: newCredential('OpenRouter API') } },
+});
+
+const verdictsAutofixModel = languageModel({
+  type: '@n8n/n8n-nodes-langchain.lmChatOpenRouter', version: 1,
+  config: { name: 'OpenRouter (gpt-4.1, autofix)', position: [2880, 200], parameters: { model: 'openai/gpt-4.1', options: {} }, credentials: { openRouterApi: newCredential('OpenRouter API') } },
 });
 
 const verdictsParser = outputParser({
   type: '@n8n/n8n-nodes-langchain.outputParserStructured', version: 1.3,
   config: { name: 'Verdicts Schema', position: [2800, 0], parameters: {
     schemaType: 'fromJson',
-    jsonSchemaExample: '{"verdicts":[{"index":0,"match":true,"reason":"directly about topic","updated_fields":{"text":"new text"}},{"index":1,"match":false,"reason":"unrelated mention","updated_fields":{}}]}',
-  } },
+    // Two-example variant. Initially tried 3 examples (single + multi-key +
+    // empty) but LLM imitated the multi-key shape verbatim — added empty
+    // strings for placeholder keys it didn't actually rewrite. Now: one
+    // canonical case (single key) + one false case. Multi-field cases are
+    // covered by the prompt instructions and Build Rows' defensive remap.
+    jsonSchemaExample: '{"verdicts":[{"index":0,"match":true,"reason":"directly about topic","updated_fields":{"textMarkdown":"<full rewritten text>"}},{"index":1,"match":false,"reason":"unrelated mention","updated_fields":{}}]}',
+    autoFix: true,
+  }, subnodes: { model: verdictsAutofixModel } },
 });
 
-// Single LLM call combining classification + rewrite proposal. Gemini Flash
-// gets the WHOLE story context (slug/name + all matched blocks for THIS story
-// in one batch). Output schema asks for, per match: index, match (boolean),
-// reason, updated_fields (only when match=true). Cheaper than two separate
-// calls and gives the model story-level context for relevance decisions.
 const classifyRewriteAgent = node({
   type: '@n8n/n8n-nodes-langchain.agent', version: 3.1,
   config: { name: 'LLM Classify + Rewrite', position: [2640, -200], onError: 'continueRegularOutput', parameters: {
@@ -406,20 +536,15 @@ Return EXACTLY {{ $json.match_count }} verdicts in input order.`,
   output: [{ output: { verdicts: [] } }],
 });
 
-// Take LLM verdicts, build a campaign_blocks row per match=true result (with
-// patched proposed_payload, content_hash, full identifiers). If 0 kept after
-// filtering, still emit a sentinel row so this story's row count > 0 and
-// future runs skip it.
+// Build success rows from LLM verdicts. Story info comes from the current
+// loop iteration ($('Loop Over Stories').first().json), since the loop's
+// items now carry the full Substring-Filter-bulk output (story + matches).
 const buildRowsFromVerdicts = node({
   type: 'n8n-nodes-base.code', version: 2,
   config: { name: 'Build Rows', position: [2880, -200], alwaysOutputData: true, parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $('Init Campaign Meta').first().json;
-const filterOut = $('Substring Filter (per story)').first().json;
-const story = filterOut;
+const story = $('Loop Over Stories').first().json;
 const upstream = $input.first().json || {};
 
-// When agent.onError=continueRegularOutput, the upstream item may carry
-// an error field instead of output — emit an llm_error sentinel so the
-// story is still marked as processed and the loop continues.
 if (upstream.error || (!upstream.output && !upstream.verdicts)) {
   const now = new Date().toISOString();
   const rid = \`\${meta.campaign_id}__\${story.story_id}____sentinel__\`;
@@ -480,8 +605,6 @@ for (let i = 0; i < matches.length; i++) {
 }
 
 if (out.length === 0) {
-  // Sentinel: tells future runs this story is processed even though no block
-  // survived classification. SPA filters block_component='__sentinel__'.
   const rowId = \`\${meta.campaign_id}__\${story.story_id}____sentinel__\`;
   out.push({ json: {
     row_id: rowId,
@@ -508,7 +631,6 @@ return out;` } },
   output: [{ row_id: 'cmp__12345__b-1', campaign_id: 'cmp', story_id: '12345', block_uid: 'b-1', status: 'proposed' }],
 });
 
-// Same sentinel insertion logic for the "no substring matches at all" branch.
 const buildSentinelNoMatches = node({
   type: 'n8n-nodes-base.code', version: 2,
   config: { name: 'Build Sentinel (no matches)', position: [2640, 200], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const meta = $('Init Campaign Meta').first().json;
@@ -592,45 +714,38 @@ Open the review UI: https://imin.github.io/article-actualization-ui/?api=https:/
   output: [{ ok: true }],
 });
 
-const stickyOverview = sticky('## WF-Search-PreProcess (per-story)\n\nSequential per-story pipeline. Each story is fetched, scanned, classified, and rewritten in isolation. Already-processed stories are detected via existing rows in campaign_blocks (campaign_id + story_id) and skipped. Sentinel rows track stories with no matches so re-runs do not reprocess them.\n\nblock_uid is the stable identifier across Storyblok edits. Snapshot path is informational. content_hash enables stale-detection at LIVE accept time.', [], { color: 7, width: 520, height: 240 });
-const stickyArch = sticky('## Per-story flow (matryoshka)\n\nLoop Over Stories (batchSize=1)\n  ├─ Check existing rows for (campaign_id, story_id)\n  ├─ Skip if already processed\n  ├─ Substring filter the story body\n  ├─ If 0 matches: insert sentinel (no_matches), next\n  ├─ ONE LLM call: classify + rewrite per match\n  ├─ Build rows for kept blocks (or sentinel no_relevant)\n  └─ Insert into campaign_blocks, next', [], { color: 4, width: 520, height: 240 });
-const stickyLive = sticky('## Stale-content handling (LIVE TODO)\n\nDRY_RUN mode: Accept just flips status; block_path going stale is harmless.\n\nLIVE mode (when SAFETY_DRY_RUN=false in WF-UIBackend):\n1. On accept/edit, refetch the story by story_id from Storyblok mAPI.\n2. Walk current content.body, find block by _uid (stable).\n3. Compare current block content_hash to original_content_hash.\n   - If equal: safe to patch with proposed_payload (using current path).\n   - If different: status=stale_content, editor must re-review.\n4. If _uid not found: status=error_block_missing (block was deleted).', [], { color: 3, width: 480, height: 280 });
-
 export default workflow('wf-search-preprocess', 'Mass Actualization: Search & Pre-Process')
   .add(formTrigger)
   .to(initCampaign)
+  .to(fetchProcessedRows)
+  .to(aggregateProcessedStoryIds)
   .to(generatePageNumbers)
   .to(fetchStoryblokStories)
   .to(flattenStoriesToList)
-  .to(loopStories
-    .onEachBatch(
-      checkStoryProcessed
-        .to(decideSkipStory)
-        .to(skipIfProcessed
-          .onTrue(nextBatch(loopStories))
-          .onFalse(
-            substringFilterStory
-              .to(hasMatches
-                .onTrue(
-                  classifyRewriteAgent
-                    .to(buildRowsFromVerdicts)
-                    .to(insertRows)
-                    .to(nextBatch(loopStories))
-                )
-                .onFalse(
-                  buildSentinelNoMatches
-                    .to(insertRows)
-                    .to(nextBatch(loopStories))
-                )
-              )
-          )
+  .to(filterUnprocessedStories)
+  .to(sliceOrMarkComplete)
+  .to(isCampaignComplete
+    .onTrue(slackNotify)
+    .onFalse(substringFilterBulk
+      .to(loopStories
+        .onEachBatch(
+          hasMatches
+            .onTrue(
+              classifyRewriteAgent
+                .to(buildRowsFromVerdicts)
+                .to(insertRows)
+                .to(nextBatch(loopStories))
+            )
+            .onFalse(
+              buildSentinelNoMatches
+                .to(insertRows)
+                .to(nextBatch(loopStories))
+            )
         )
+        .onDone(buildSelfTriggerBody.to(selfTriggerNextBatch))
+      )
     )
-    .onDone(slackNotify)
   )
   .add(searchWebhook)
   .to(validateWebhookInput)
-  .to(checkPayload.onTrue(respondQueued.to(stripCorsField).to(initCampaign)).onFalse(respondError))
-  .add(stickyOverview)
-  .add(stickyArch)
-  .add(stickyLive);
+  .to(checkPayload.onTrue(respondQueued.to(stripCorsField).to(initCampaign)).onFalse(respondError));

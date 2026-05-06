@@ -58,7 +58,7 @@
             <div class="flex-1">
               <div class="font-semibold text-red-900">Не удалось загрузить кампанию</div>
               <div class="text-sm text-red-800 mt-1" x-text="error"></div>
-              <template x-if="apiMode === 'real' && hasToken">
+              <template x-if="hasToken">
                 <button type="button"
                         @click="logout()"
                         class="btn btn-ghost mt-4">
@@ -76,7 +76,9 @@
       <div class="flex items-center justify-center min-h-screen p-8 animate-fade-in">
         <div class="card max-w-md w-full p-7">
           <div class="flex items-center gap-3 mb-5">
-            <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7">
+            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" title="immigrantinvest.com">
+              <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity hover:opacity-80">
+            </a>
           </div>
           <h1 class="text-xl font-semibold text-[var(--imin-text)] mb-1.5">Доступ к Mass Actualization</h1>
           <p class="text-sm text-[var(--imin-text-muted)] mb-5">
@@ -116,9 +118,11 @@
       <div class="min-h-screen flex flex-col">
         <header class="glass-header sticky top-0 z-30">
           <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-6">
-            <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7">
+            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="shrink-0" title="immigrantinvest.com">
+              <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity hover:opacity-80">
+            </a>
             <div class="flex-1"></div>
-            <template x-if="apiMode === 'real' && hasToken">
+            <template x-if="hasToken">
               <button type="button" @click="logout()" class="btn btn-ghost shrink-0" title="Удалить токен из этого браузера">Выйти</button>
             </template>
           </div>
@@ -207,7 +211,7 @@
         <!-- Header — logo + campaign + progress -->
         <header class="glass-header sticky top-0 z-30">
           <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-6">
-            <a href="/" class="shrink-0 flex items-center gap-3 group" title="Immigrant Invest">
+            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="shrink-0 flex items-center gap-3 group" title="immigrantinvest.com">
               <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity group-hover:opacity-80">
             </a>
             <template x-if="state">
@@ -227,7 +231,7 @@
                           :class="{
                             'bg-amber-500 animate-pulse': isSearchRunning,
                             'bg-slate-400': !isSearchRunning && searchStatusLabel === 'idle',
-                            'bg-slate-300': searchStatusLabel === 'empty' || searchStatusLabel === 'mock',
+                            'bg-slate-300': searchStatusLabel === 'empty',
                           }"></span>
                     <span class="text-xs font-medium text-[var(--imin-text-muted)] capitalize" x-text="searchStatusLabel"></span>
                   </div>
@@ -244,7 +248,7 @@
             <template x-if="!state">
               <div class="flex-1"></div>
             </template>
-            <template x-if="apiMode === 'real' && hasToken">
+            <template x-if="hasToken">
               <button type="button"
                       @click="logout()"
                       class="btn btn-ghost shrink-0"
@@ -320,6 +324,61 @@
                        x-text="resumeError"></div>
                 </template>
               </div>
+              <!-- ───── Publish / cascade banner ─────────────────────────
+                   Slots:
+                   1) Has publishable rows (decided but not cascaded) — emerald
+                      banner. Text varies: "Готово" if all reviewed, otherwise
+                      "Готово к частичной публикации" with progress hint.
+                   2) Has cascaded rows — blue rollback banner.
+                   Both can be visible simultaneously: e.g. half the story
+                   cascaded earlier, the other half just got reviewed. -->
+              <template x-if="hasPublishableRows">
+                <div class="card p-4 mb-5 border-emerald-300 bg-emerald-50/60 flex items-center gap-4 flex-wrap">
+                  <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span class="text-2xl shrink-0">🎯</span>
+                    <div class="min-w-0">
+                      <div class="text-sm font-semibold text-emerald-900">
+                        <template x-if="readyToPublish"><span>Готово к публикации</span></template>
+                        <template x-if="!readyToPublish"><span>Готово к частичной публикации</span></template>
+                      </div>
+                      <div class="text-xs text-emerald-800 mt-0.5">
+                        <span x-text="publishableRowCount"></span> блоков можно пушить в Storyblok.
+                        <template x-if="unreviewedRowCount > 0">
+                          <span> Ещё <span class="font-semibold" x-text="unreviewedRowCount"></span> ждут review — их можно опубликовать позже отдельным заходом.</span>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="btn btn-primary shrink-0" @click="openPublishModal()" :disabled="publishBusy">
+                    🚀 Опубликовать <span x-text="publishableRowCount"></span> <span x-text="publishableRowCount === 1 ? 'блок' : 'блоков'"></span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="hasCascadedRows">
+                <div class="card p-4 mb-5 border-blue-300 bg-blue-50/60 flex items-center gap-4 flex-wrap">
+                  <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span class="text-2xl shrink-0">✅</span>
+                    <div class="min-w-0">
+                      <div class="text-sm font-semibold text-blue-900">
+                        Опубликовано в Storyblok (draft)
+                      </div>
+                      <div class="text-xs text-blue-800 mt-0.5">
+                        <span x-text="state.progress.cascaded || 0"></span> блоков опубликованы. Проверь в Storyblok admin и опубликуй вручную.
+                      </div>
+                    </div>
+                  </div>
+                  <button class="btn btn-danger shrink-0" @click="rollbackStory(null)" :disabled="publishBusy" title="Откатить ВСЕ опубликованные stories к состоянию до cascade'а">
+                    ↶ Откатить кампанию
+                  </button>
+                </div>
+              </template>
+              <template x-if="publishMessage">
+                <div class="card p-3 mb-3 border-emerald-200 bg-emerald-50 text-sm text-emerald-800" x-text="publishMessage"></div>
+              </template>
+              <template x-if="publishError">
+                <div class="card p-3 mb-3 border-red-200 bg-red-50 text-sm text-red-800" x-text="publishError"></div>
+              </template>
+
               <div class="flex items-end justify-between mb-6 gap-3">
                 <div>
                   <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight">Stories</h1>
@@ -362,6 +421,48 @@
                           <span class="badge"
                                 :class="'badge-' + badge.label"
                                 x-text="badge.label + ' ' + badge.count"></span>
+                        </template>
+                        <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].cascaded && !cascadeStateByStory[g.story_id].partial">
+                          <span class="badge bg-blue-100 text-blue-800" title="В Storyblok как draft">✓ опубликовано</span>
+                        </template>
+                        <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].partial">
+                          <span class="badge bg-blue-100 text-blue-800" title="Часть блоков опубликована, остальные ещё ждут review">✓ опубликовано (частично)</span>
+                        </template>
+                        <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].translation">
+                          <button class="text-base ml-1 cursor-help select-none transition-opacity hover:opacity-100"
+                                  :class="{
+                                    'opacity-100': cascadeStateByStory[g.story_id].translation.status === 'triggered' || cascadeStateByStory[g.story_id].translation.status === 'queued',
+                                    'opacity-50': cascadeStateByStory[g.story_id].translation.status === 'no_targets' || cascadeStateByStory[g.story_id].translation.status === 'skipped',
+                                    'opacity-100 text-amber-600': cascadeStateByStory[g.story_id].translation.status === 'stale',
+                                  }"
+                                  @click.stop="cascadeStateByStory[g.story_id].translation.status === 'stale' ? retryTranslation(g.story_id) : null"
+                                  :disabled="publishBusy"
+                                  :title="(() => {
+                                    const t = cascadeStateByStory[g.story_id].translation;
+                                    const lines = [];
+                                    if (t.published) lines.push('🚀 Опубликовано в live'); else lines.push('📝 Сохранено как draft');
+                                    if (t.source) lines.push('Master: ' + t.source);
+                                    if (t.status === 'triggered' && t.target_locales.length) {
+                                      lines.push('🌍 Переводы запущены: ' + t.target_locales.join(', '));
+                                      if (t.triggered_at) lines.push('Триггер: ' + new Date(t.triggered_at).toLocaleString('ru-RU'));
+                                    } else if (t.status === 'queued') {
+                                      lines.push('🌍 Перевод в очереди...');
+                                    } else if (t.status === 'no_targets') {
+                                      lines.push('🌍 Переводы не нужны (нет существующих локалей)');
+                                    } else if (t.status === 'stale') {
+                                      lines.push('⚠ Перевод запущен давно — возможно завис');
+                                      lines.push('Click чтобы перезапустить');
+                                    } else if (t.status === 'skipped') {
+                                      lines.push('🌍 Переводы выключены при cascade');
+                                    }
+                                    return lines.join('\n');
+                                  })()">🌍</button>
+                        </template>
+                        <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].cascaded">
+                          <button class="btn btn-ghost text-xs ml-1"
+                                  @click.stop="rollbackStory(g.story_id)"
+                                  :disabled="publishBusy"
+                                  title="Откатить эту story в Storyblok к состоянию до публикации (вернётся в очередь review для повторной публикации)">↶</button>
                         </template>
                         <svg class="w-4 h-4 text-[var(--imin-text-subtle)] ml-1 transition-transform group-hover:translate-x-0.5"
                              fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,9 +527,14 @@
                             <span class="text-[var(--imin-text-subtle)]">·</span>
                             <span class="field-label" x-text="block.block_path"></span>
                           </div>
-                          <span class="badge"
-                                :class="'badge-' + block.status"
-                                x-text="block.status"></span>
+                          <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="badge"
+                                  :class="'badge-' + block.status"
+                                  x-text="block.status"></span>
+                            <template x-if="isPublished(block)">
+                              <span class="badge bg-blue-100 text-blue-800" title="В Storyblok как draft (или published — зависит от mode)">✓ published</span>
+                            </template>
+                          </div>
                         </div>
 
                         <!-- LLM reasoning -->
@@ -439,16 +545,47 @@
                           <span x-text="block.llm_match_reason"></span>
                         </div>
 
+                        <!-- Whole-block deletion proposal banner. Shown ABOVE
+                             the field cards so the diff stays visible — editor
+                             still wants to read the block's content to decide
+                             whether the LLM's "delete" is correct. -->
+                        <template x-if="block.status === 'proposed_delete'">
+                          <div class="mb-4 px-3 py-2.5 rounded-md border-2 border-red-300 bg-red-50 text-red-900 text-sm flex items-start gap-2">
+                            <svg class="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                            <div>
+                              <div class="font-semibold mb-0.5">LLM предлагает удалить весь блок</div>
+                              <div class="text-xs text-red-800">Блок устарел и должен быть полностью убран из статьи. Подтверди удаление, либо оставь блок (Skip), либо отредактируй вручную.</div>
+                            </div>
+                          </div>
+                        </template>
+
                         <!-- Per-field diff cards -->
                         <div class="space-y-3">
                           <template x-for="fieldName in fieldsToShow(block)" :key="fieldName">
                             <div class="field-card">
-                              <div class="field-label mb-2" x-text="fieldName"></div>
-                              <div class="diff-output text-[14px]"
-                                   x-html="diffHTML(
-                                     String(getByPath(block.original_payload, fieldName) ?? ''),
-                                     String((getByPath(block.edited_payload, fieldName) ?? getByPath(block.proposed_payload, fieldName) ?? getByPath(block.original_payload, fieldName)) ?? '')
-                                   )"></div>
+                              <div class="field-label mb-2 flex items-center gap-2">
+                                <span x-text="fieldName"></span>
+                                <template x-if="!hasChanges(block, fieldName)">
+                                  <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                                        style="background: rgba(255, 149, 0, 0.18); color: #b45309;">
+                                    ⚠ no changes proposed
+                                  </span>
+                                </template>
+                              </div>
+                              <template x-if="hasChanges(block, fieldName)">
+                                <div class="diff-output text-[14px]"
+                                     x-html="diffHTML(
+                                       String(getByPath(block.original_payload, fieldName) ?? ''),
+                                       String((getByPath(block.edited_payload, fieldName) ?? getByPath(block.proposed_payload, fieldName) ?? getByPath(block.original_payload, fieldName)) ?? '')
+                                     )"></div>
+                              </template>
+                              <template x-if="!hasChanges(block, fieldName)">
+                                <div class="text-[14px] text-[var(--imin-text-muted)]"
+                                     style="white-space: pre-wrap; word-break: break-word; line-height: 1.6;"
+                                     x-text="String(getByPath(block.original_payload, fieldName) ?? '')"></div>
+                              </template>
                             </div>
                           </template>
                         </div>
@@ -458,47 +595,91 @@
                              x-data="blockActions(block.row_id)" x-init="init()"
                              @row-action.window="onRowAction($event.detail)">
 
-                          <template x-if="block.status === 'proposed' || block.status === 'pending' || block.status === 'error'">
-                            <div>
-                              <div class="flex flex-wrap gap-2" x-show="!editing">
-                                <button class="btn btn-success" :disabled="busy" @click.stop="onAccept()">Accept</button>
-                                <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">Edit</button>
-                                <button class="btn btn-neutral" :disabled="busy" @click.stop="openSkipModal()">Skip</button>
-                                <button class="btn btn-danger ml-auto" :disabled="busy" @click.stop="openDeleteConfirm()">Delete block</button>
-                              </div>
-
-                              <div x-show="editing"
-                                   x-transition:enter="transition ease-out duration-200"
-                                   x-transition:enter-start="opacity-0 translate-y-1"
-                                   x-transition:enter-end="opacity-100 translate-y-0"
-                                   class="space-y-3">
-                                <template x-for="fieldName in fieldsToShow(block)" :key="fieldName">
-                                  <div>
-                                    <div class="field-label mb-1.5" x-text="fieldName"></div>
-                                    <textarea class="edit-textarea" rows="4" x-model="editedFields[fieldName]"></textarea>
-                                  </div>
-                                </template>
-                                <div class="flex gap-2 pt-1">
-                                  <button class="btn btn-success" :disabled="busy" @click.stop="onAcceptEdited()">
-                                    Save & Apply
-                                  </button>
-                                  <button class="btn btn-ghost" :disabled="busy" @click.stop="cancelEdit()">
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
+                          <!-- Action button rows. Per-status button labels &
+                               ordering, but they all share the editing pane
+                               (rendered once below) since edit logic is the
+                               same regardless of how editor reached it. -->
+                          <template x-if="(block.status === 'proposed' || block.status === 'pending' || block.status === 'error') && !editing">
+                            <div class="flex flex-wrap gap-2">
+                              <button class="btn btn-success" :disabled="busy" @click.stop="onAccept()">Accept</button>
+                              <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">Edit</button>
+                              <button class="btn btn-neutral" :disabled="busy" @click.stop="openSkipModal()">Skip</button>
+                              <button class="btn btn-danger ml-auto" :disabled="busy" @click.stop="openDeleteConfirm()">Delete block</button>
                             </div>
                           </template>
 
+                          <!-- proposed_delete = LLM proposed FULL block removal.
+                               Primary CTA confirms deletion (action='delete' →
+                               status='deleted'), not text accept. Editor can
+                               also override into edit or keep the block. -->
+                          <template x-if="block.status === 'proposed_delete' && !editing">
+                            <div class="flex flex-wrap gap-2">
+                              <button class="btn btn-danger" :disabled="busy" @click.stop="openDeleteConfirm()">Подтвердить удаление</button>
+                              <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">Отредактировать вместо удаления</button>
+                              <button class="btn btn-neutral ml-auto" :disabled="busy" @click.stop="openSkipModal()">Skip — оставить блок</button>
+                            </div>
+                          </template>
+
+                          <!-- Inline editor (shared across all not-yet-decided
+                               statuses). Triggered from any status row via
+                               startEdit(); commits land in edited_payload. -->
+                          <div x-show="editing"
+                               x-transition:enter="transition ease-out duration-200"
+                               x-transition:enter-start="opacity-0 translate-y-1"
+                               x-transition:enter-end="opacity-100 translate-y-0"
+                               class="space-y-3">
+                            <template x-for="fieldName in fieldsToShow(block)" :key="fieldName">
+                              <div>
+                                <div class="field-label mb-1.5" x-text="fieldName"></div>
+                                <textarea class="edit-textarea" rows="4" x-model="editedFields[fieldName]"></textarea>
+                              </div>
+                            </template>
+                            <div class="flex gap-2 pt-1">
+                              <button class="btn btn-success" :disabled="busy" @click.stop="onAcceptEdited()">
+                                Save & Apply
+                              </button>
+                              <button class="btn btn-ghost" :disabled="busy" @click.stop="cancelEdit()">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+
+                          <!-- Decided pill + revert/rollback buttons. Two
+                               distinct undo paths:
+                               - "Откатить решение" (revert) — drops status
+                                 back to proposed; SAFE, fully local.
+                               - "Откатить публикацию" (cascade-rollback) —
+                                 ONLY shown when block is cascaded; fetches
+                                 current Storyblok story, splices snapshot
+                                 version of THIS block back, PUTs as draft.
+                                 Other blocks of the story are left alone. -->
                           <template x-if="['accepted','edited','skipped','deleted'].includes(block.status)">
-                            <div class="inline-flex items-center gap-2 text-sm text-[var(--imin-text-muted)]">
-                              <span class="w-2 h-2 rounded-full"
-                                    :class="{
-                                      'bg-emerald-500': block.status === 'accepted' || block.status === 'edited',
-                                      'bg-slate-400': block.status === 'skipped',
-                                      'bg-red-500': block.status === 'deleted'
-                                    }"></span>
-                              Decided · <span class="font-medium text-[var(--imin-text)]" x-text="block.status"></span>
+                            <div class="flex items-center justify-between gap-3 flex-wrap">
+                              <div class="inline-flex items-center gap-2 text-sm text-[var(--imin-text-muted)]">
+                                <span class="w-2 h-2 rounded-full"
+                                      :class="{
+                                        'bg-emerald-500': block.status === 'accepted' || block.status === 'edited',
+                                        'bg-slate-400': block.status === 'skipped',
+                                        'bg-red-500': block.status === 'deleted'
+                                      }"></span>
+                                Decided · <span class="font-medium text-[var(--imin-text)]" x-text="block.status"></span>
+                              </div>
+                              <div class="flex items-center gap-2">
+                                <template x-if="_root && _root.isCurrentlyPublished(block)">
+                                  <button class="btn btn-warning text-sm"
+                                          :disabled="busy || (_root && _root.publishBusy)"
+                                          @click.stop="_root.rollbackBlock(block.row_id)"
+                                          title="Откатить публикацию ЭТОГО блока (вернёт в Storyblok состояние до cascade'а; блок снова станет publishable)">
+                                    ↶ Откатить публикацию
+                                  </button>
+                                </template>
+                                <button class="btn btn-ghost text-sm"
+                                        :disabled="busy"
+                                        @click.stop="onRevert()"
+                                        title="Откатить решение редактора и вернуть блок в очередь">
+                                  ↶ Откатить решение
+                                </button>
+                              </div>
                             </div>
                           </template>
 
@@ -698,6 +879,26 @@
                       </label>
 
                       <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Block must also contain (AND)
+                          <span class="text-[var(--imin-text-subtle)] font-normal">— опционально</span>
+                        </span>
+                        <input type="text" x-model="form.block_required_keywords"
+                               placeholder="years"
+                               class="edit-textarea">
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Comma-separated. Блок попадёт в выборку только если в нём есть Keyword <strong>и</strong> ВСЕ эти термы (case-insensitive). Пусто → проверяется только Keyword.</div>
+                      </label>
+
+                      <label class="block">
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Article must contain at least one of (OR)
+                          <span class="text-[var(--imin-text-subtle)] font-normal">— опционально</span>
+                        </span>
+                        <input type="text" x-model="form.article_any_keywords"
+                               placeholder="Portugal, Golden Visa"
+                               class="edit-textarea">
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Comma-separated. Стори целиком пропускается если в её body нет ни одного из этих термов. Самый дешёвый и эффективный способ отсеять не-релевантные статьи.</div>
+                      </label>
+
+                      <label class="block">
                         <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Context description</span>
                         <textarea rows="3" x-model="form.context_description"
                                   placeholder='Mention of "5 years" specifically as the residency period required to apply for Portuguese citizenship via naturalisation.'
@@ -799,41 +1000,13 @@
                     </div>
                   </div>
 
-                  <!-- Real mode: no granular counters (n8n doesn't stream progress).
-                       Just show a friendly "this will take a while" message. -->
-                  <template x-if="!isMock">
-                    <div class="space-y-3">
-                      <div class="field-card text-sm text-[var(--imin-text-muted)]">
-                        Запускаем pipeline: mAPI fetch → substring filter → LLM context filter → LLM rewrite. Обычно <strong class="text-[var(--imin-text)]">5–15 минут</strong> для всего blog-tree (~1000 stories), может больше при долгом cold start n8n.
-                      </div>
+                  <!-- n8n doesn't stream progress, so just show a friendly
+                       "this will take a while" message. -->
+                  <div class="space-y-3">
+                    <div class="field-card text-sm text-[var(--imin-text-muted)]">
+                      Запускаем pipeline: mAPI fetch → substring filter → LLM context filter → LLM rewrite. Обычно <strong class="text-[var(--imin-text)]">5–15 минут</strong> для всего blog-tree (~1000 stories), может больше при долгом cold start n8n.
                     </div>
-                  </template>
-
-                  <!-- Mock mode: animated counters for design preview -->
-                  <template x-if="isMock">
-                    <div class="space-y-3 stagger-fade">
-                      <div class="field-card flex items-center justify-between">
-                        <span class="text-sm text-[var(--imin-text-muted)]">Stories scanned (Storyblok mAPI)</span>
-                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.stories_scanned"></span>
-                      </div>
-                      <div class="field-card flex items-center justify-between">
-                        <span class="text-sm text-[var(--imin-text-muted)]">Blocks scanned</span>
-                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.blocks_scanned.toLocaleString()"></span>
-                      </div>
-                      <div class="field-card flex items-center justify-between">
-                        <span class="text-sm text-[var(--imin-text-muted)]">After substring filter (no LLM cost)</span>
-                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.hits_after_substring.toLocaleString()"></span>
-                      </div>
-                      <div class="field-card flex items-center justify-between">
-                        <span class="text-sm text-[var(--imin-text-muted)]">After LLM context filter</span>
-                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.hits_after_llm_filter"></span>
-                      </div>
-                      <div class="field-card flex items-center justify-between">
-                        <span class="text-sm text-[var(--imin-text-muted)]">Rewrite proposals generated</span>
-                        <span class="font-mono font-semibold tabular-nums text-[var(--imin-text)]" x-text="progress.proposed"></span>
-                      </div>
-                    </div>
-                  </template>
+                  </div>
 
                   <template x-if="error">
                     <div class="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3" x-text="error"></div>
@@ -850,59 +1023,25 @@
                     </svg>
                   </div>
 
-                  <!-- Real mode: queued, pipeline running in background -->
-                  <template x-if="!isMock">
-                    <div>
-                      <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2">Поиск запущен</h2>
-                      <p class="text-sm text-[var(--imin-text-muted)] mb-5">
-                        Pipeline работает в фоне. Slack-уведомление в <code class="font-mono text-xs bg-[var(--imin-fill)] px-1.5 py-0.5 rounded">#translation-reports</code> когда proposals готовы — это 5–15 минут типично.
-                      </p>
-                      <div class="field-card max-w-sm mx-auto mb-6 text-left">
-                        <div class="field-label mb-1">campaign_id</div>
-                        <div class="font-mono text-sm text-[var(--imin-text)] break-all" x-text="queuedCampaignId"></div>
-                        <div class="field-label mt-3 mb-1">queued at</div>
-                        <div class="font-mono text-xs text-[var(--imin-text-muted)]" x-text="queuedAt"></div>
-                      </div>
-                      <div class="flex justify-center gap-2 flex-wrap">
-                        <button class="btn btn-ghost" @click="reset(); goToSearch()">Новая campaign</button>
-                        <a class="btn btn-primary" :href="reviewQueueUrl()">Открыть очередь review →</a>
-                      </div>
-                      <p class="text-xs text-[var(--imin-text-subtle)] mt-4">
-                        Очередь будет пустой пока pipeline не закончит запись в campaign_blocks. Откроется автоматически когда строки появятся.
-                      </p>
+                  <div>
+                    <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2">Поиск запущен</h2>
+                    <p class="text-sm text-[var(--imin-text-muted)] mb-5">
+                      Pipeline работает в фоне. Slack-уведомление в <code class="font-mono text-xs bg-[var(--imin-fill)] px-1.5 py-0.5 rounded">#translation-reports</code> когда proposals готовы — это 5–15 минут типично.
+                    </p>
+                    <div class="field-card max-w-sm mx-auto mb-6 text-left">
+                      <div class="field-label mb-1">campaign_id</div>
+                      <div class="font-mono text-sm text-[var(--imin-text)] break-all" x-text="queuedCampaignId"></div>
+                      <div class="field-label mt-3 mb-1">queued at</div>
+                      <div class="font-mono text-xs text-[var(--imin-text-muted)]" x-text="queuedAt"></div>
                     </div>
-                  </template>
-
-                  <!-- Mock mode: simulated stats -->
-                  <template x-if="isMock">
-                    <div>
-                      <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2">Search complete</h2>
-                      <p class="text-sm text-[var(--imin-text-muted)] mb-6">
-                        Найдено <strong class="text-[var(--imin-text)]" x-text="progress.proposed"></strong> блоков для review.
-                      </p>
-                      <div class="grid grid-cols-3 gap-3 max-w-md mx-auto mb-6">
-                        <div class="field-card text-center">
-                          <div class="text-xl font-bold tabular-nums text-[var(--imin-text)]" x-text="progress.stories_scanned"></div>
-                          <div class="text-[10px] uppercase font-semibold tracking-wider text-[var(--imin-text-subtle)] mt-1">Stories</div>
-                        </div>
-                        <div class="field-card text-center">
-                          <div class="text-xl font-bold tabular-nums text-[var(--imin-text)]" x-text="progress.hits_after_substring.toLocaleString()"></div>
-                          <div class="text-[10px] uppercase font-semibold tracking-wider text-[var(--imin-text-subtle)] mt-1">Substring hits</div>
-                        </div>
-                        <div class="field-card text-center">
-                          <div class="text-xl font-bold tabular-nums text-[var(--imin-text)]" x-text="progress.proposed"></div>
-                          <div class="text-[10px] uppercase font-semibold tracking-wider text-[var(--imin-text-subtle)] mt-1">Proposals</div>
-                        </div>
-                      </div>
-                      <div class="flex justify-center gap-2">
-                        <button class="btn btn-ghost" @click="reset(); goToSearch()">Новая campaign</button>
-                        <button class="btn btn-primary" @click="goToOverview()">Открыть очередь review →</button>
-                      </div>
-                      <p class="text-xs text-[var(--imin-text-subtle)] mt-4">
-                        <em>Mock-mode: данные не отправлены в n8n. Запусти SPA с <code>?api=&lt;n8n base&gt;&amp;t=&lt;token&gt;</code> для real-mode.</em>
-                      </p>
+                    <div class="flex justify-center gap-2 flex-wrap">
+                      <button class="btn btn-ghost" @click="reset(); goToSearch()">Новая campaign</button>
+                      <a class="btn btn-primary" :href="reviewQueueUrl()">Открыть очередь review →</a>
                     </div>
-                  </template>
+                    <p class="text-xs text-[var(--imin-text-subtle)] mt-4">
+                      Очередь будет пустой пока pipeline не закончит запись в campaign_blocks. Откроется автоматически когда строки появятся.
+                    </p>
+                  </div>
                 </div>
               </template>
             </div>
@@ -917,6 +1056,80 @@
         </footer>
       </div>
     </template>
+
+    <!-- Publish (cascade) modal — opened from overview's "🚀 Опубликовать" button -->
+    <div x-show="publishModalOpen"
+         x-transition.opacity
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="publish-modal-title"
+         class="modal-backdrop"
+         @click.self="closePublishModal()">
+      <div class="modal-panel max-w-xl" @click.stop>
+        <div class="flex items-center justify-between mb-3">
+          <h3 id="publish-modal-title" class="text-lg font-semibold">🚀 Опубликовать кампанию</h3>
+          <button type="button"
+                  class="text-[var(--imin-text-subtle)] hover:text-[var(--imin-text)] text-2xl leading-none transition-colors"
+                  @click="closePublishModal()">&times;</button>
+        </div>
+
+        <p class="text-sm text-[var(--imin-text-muted)] mb-4">
+          В Storyblok через management API будут запушены <strong x-text="publishableRowCount"></strong> уже принятых/изменённых/удалённых блока.
+          <template x-if="unreviewedRowCount > 0">
+            <span class="text-amber-800"> Ещё <span x-text="unreviewedRowCount"></span> блоков ждут твоего решения — они <strong>не</strong> попадут в этот pуш и останутся видимыми в очереди review.</span>
+          </template>
+          <span class="block mt-2 text-xs">Перевод на другие локали — отдельным шагом (Phase 2B), пока только source-локаль.</span>
+        </p>
+
+        <template x-if="state && state.campaign">
+          <div class="field-card mb-4">
+            <div class="text-xs text-[var(--imin-text-subtle)] uppercase tracking-wider mb-1">Источник</div>
+            <div class="text-sm font-mono" x-text="state.campaign.source_locale + ' (master)'"></div>
+            <div class="text-xs text-[var(--imin-text-subtle)] mt-2">Запись идёт в базовые поля Storyblok без __i18n__ суффикса.</div>
+          </div>
+        </template>
+
+        <div class="mb-4">
+          <div class="field-label mb-2">Режим</div>
+          <div class="space-y-2">
+            <label class="flex items-start gap-2.5 p-3 rounded-md border cursor-pointer transition-colors"
+                   :class="!publishImmediately ? 'border-emerald-300 bg-emerald-50/40' : 'border-[var(--imin-border)] hover:bg-[var(--imin-bg)]'">
+              <input type="radio" name="publish-mode" :value="false" :checked="!publishImmediately" @change="publishImmediately = false" class="mt-0.5 accent-[var(--imin-navy)]">
+              <div>
+                <div class="text-sm font-semibold text-[var(--imin-text)]">Draft (рекомендуется)</div>
+                <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">Сохранить как draft в Storyblok. Редактор открывает Storyblok admin, проверяет визуально, публикует руками.</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-2.5 p-3 rounded-md border cursor-pointer transition-colors"
+                   :class="publishImmediately ? 'border-amber-300 bg-amber-50/60' : 'border-[var(--imin-border)] hover:bg-[var(--imin-bg)]'">
+              <input type="radio" name="publish-mode" :value="true" :checked="publishImmediately" @change="publishImmediately = true" class="mt-0.5 accent-[var(--imin-navy)]">
+              <div>
+                <div class="text-sm font-semibold text-[var(--imin-text)]">⚡ Опубликовать сразу</div>
+                <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">Изменения немедленно становятся live на сайте. Откат возможен через snapshot, но между cascade и rollback зрители увидят новую версию.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="text-xs text-[var(--imin-text-muted)] bg-[var(--imin-bg)] rounded-md p-3 mb-4">
+          <strong>Безопасность:</strong> до cascade'а каждой story сохраняется снапшот её предыдущего состояния. Можно откатить отдельную story или всю кампанию из overview.
+        </div>
+
+        <template x-if="publishError">
+          <div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-3" x-text="publishError"></div>
+        </template>
+
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-ghost" @click="closePublishModal()" :disabled="publishBusy">Cancel</button>
+          <button class="btn"
+                  :class="publishImmediately ? 'btn-warning' : 'btn-primary'"
+                  @click="confirmPublish()" :disabled="publishBusy">
+            <span x-show="!publishBusy" x-text="publishImmediately ? '⚡ Опубликовать сразу' : 'Сохранить draft'"></span>
+            <span x-show="publishBusy">Запускаем…</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Keyboard shortcuts help overlay -->
     <div x-show="helpOpen"
@@ -947,6 +1160,7 @@
                 <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">e</td><td class="py-1.5 text-[var(--imin-text)]">Edit & Accept</td></tr>
                 <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">s</td><td class="py-1.5 text-[var(--imin-text)]">Skip focused block</td></tr>
                 <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">d</td><td class="py-1.5 text-[var(--imin-text)]">Delete focused block</td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">u</td><td class="py-1.5 text-[var(--imin-text)]">Откатить решение по блоку (undo)</td></tr>
                 <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">n</td><td class="py-1.5 text-[var(--imin-text)]">Save & Next Story</td></tr>
                 <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">b</td><td class="py-1.5 text-[var(--imin-text)]">Back to overview</td></tr>
                 <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Esc</td><td class="py-1.5 text-[var(--imin-text)]">Close modal / cancel edit / unfocus</td></tr>
@@ -1003,6 +1217,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=12"></script>
+  <script type="module" src="app.js?v=21"></script>
 </body>
 </html>

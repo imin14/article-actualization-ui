@@ -12,14 +12,19 @@ import {
 // =============================================================================
 // WF-UIBackend  —  Mass Actualization: UI Backend
 //
-// Two webhooks consumed by the SPA at imin.github.io/article-actualization-ui:
+// Two webhooks consumed by the SPA at imin14.github.io/article-actualization-ui:
 //
 //   GET  /webhook/campaign-state?campaign_id=<id>
 //       → { campaign, progress, blocks }
 //   POST /webhook/campaign-action
 //       body: { campaign_id, row_id, action, edited_payload?, skip_reason? }
-//       action ∈ {accept, edit, skip, delete}
+//       action ∈ {accept, edit, skip, delete, revert}
 //       → { status: 'ok', new_status, row_id, dry_run }
+//
+//       `revert` is the editor's undo button: drops status back to 'proposed'
+//       and clears edited_payload + skip_reason on the row so the next
+//       decision starts fresh. Useful when the editor mis-clicks accept/skip
+//       on a block that needs different handling.
 //
 // Auth: built-in n8n headerAuth on each trigger, bound to the same credential
 // `Actualization UI Webhook` that wf-search-preprocess uses. Wrong/missing
@@ -33,49 +38,61 @@ import {
 
 const DATA_TABLE_ID = 'wgKa7GSxjKjGrwQK';
 const DATA_TABLE_NAME = 'campaign_blocks';
-const ALLOWED_ORIGINS_CSV = 'https://imin.github.io,http://localhost:8080';
+const ALLOWED_ORIGINS_CSV = 'https://imin14.github.io,http://localhost:8080';
 
-const COLUMNS_ACCEPT = expr('={{ ' + JSON.stringify({
+// DataTable node `columns` parameter is a fixedCollection — n8n reads
+// `columns.mappingMode`, `columns.value`, `columns.schema` as separate
+// sub-fields at definition time. Wrapping the whole thing in a single
+// `={{ ... }}` expression makes n8n stringify it and then fail with
+// "Could not get parameter: columns.mappingMode" at execution. So pass it
+// as a plain object — sub-values can still be `={{ ... }}` expressions.
+const STATUS_COL_SCHEMA     = { id: 'status',         displayName: 'status',         type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true };
+const UPDATED_AT_COL_SCHEMA = { id: 'updated_at',     displayName: 'updated_at',     type: 'date',   removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true };
+const EDITED_COL_SCHEMA     = { id: 'edited_payload', displayName: 'edited_payload', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true };
+const SKIP_REASON_COL_SCHEMA= { id: 'skip_reason',    displayName: 'skip_reason',    type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true };
+
+const COLUMNS_ACCEPT = {
   mappingMode: 'defineBelow',
   value: { status: '={{ $json.new_status }}', updated_at: '={{ $json.updated_at }}' },
   matchingColumns: [],
-  schema: [
-    { id: 'status', displayName: 'status', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-    { id: 'updated_at', displayName: 'updated_at', type: 'date', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-  ],
-}) + ' }}');
+  schema: [STATUS_COL_SCHEMA, UPDATED_AT_COL_SCHEMA],
+};
 
-const COLUMNS_EDIT = expr('={{ ' + JSON.stringify({
+const COLUMNS_EDIT = {
   mappingMode: 'defineBelow',
   value: { status: '={{ $json.new_status }}', updated_at: '={{ $json.updated_at }}', edited_payload: '={{ $json.edited_payload_str }}' },
   matchingColumns: [],
-  schema: [
-    { id: 'status', displayName: 'status', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-    { id: 'updated_at', displayName: 'updated_at', type: 'date', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-    { id: 'edited_payload', displayName: 'edited_payload', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-  ],
-}) + ' }}');
+  schema: [STATUS_COL_SCHEMA, UPDATED_AT_COL_SCHEMA, EDITED_COL_SCHEMA],
+};
 
-const COLUMNS_SKIP = expr('={{ ' + JSON.stringify({
+const COLUMNS_SKIP = {
   mappingMode: 'defineBelow',
   value: { status: '={{ $json.new_status }}', updated_at: '={{ $json.updated_at }}', skip_reason: '={{ $json.skip_reason_str }}' },
   matchingColumns: [],
-  schema: [
-    { id: 'status', displayName: 'status', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-    { id: 'updated_at', displayName: 'updated_at', type: 'date', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-    { id: 'skip_reason', displayName: 'skip_reason', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-  ],
-}) + ' }}');
+  schema: [STATUS_COL_SCHEMA, UPDATED_AT_COL_SCHEMA, SKIP_REASON_COL_SCHEMA],
+};
 
-const COLUMNS_DELETE = expr('={{ ' + JSON.stringify({
+const COLUMNS_DELETE = {
   mappingMode: 'defineBelow',
   value: { status: '={{ $json.new_status }}', updated_at: '={{ $json.updated_at }}' },
   matchingColumns: [],
-  schema: [
-    { id: 'status', displayName: 'status', type: 'string', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-    { id: 'updated_at', displayName: 'updated_at', type: 'date', removed: false, required: false, display: true, defaultMatch: false, canBeUsedToMatch: true },
-  ],
-}) + ' }}');
+  schema: [STATUS_COL_SCHEMA, UPDATED_AT_COL_SCHEMA],
+};
+
+// Revert wipes both edited_payload and skip_reason so the row looks exactly
+// like it did right after the LLM proposed it. proposed_payload and
+// original_payload are NEVER touched.
+const COLUMNS_REVERT = {
+  mappingMode: 'defineBelow',
+  value: {
+    status: '={{ $json.new_status }}',
+    updated_at: '={{ $json.updated_at }}',
+    edited_payload: '',
+    skip_reason: '',
+  },
+  matchingColumns: [],
+  schema: [STATUS_COL_SCHEMA, UPDATED_AT_COL_SCHEMA, EDITED_COL_SCHEMA, SKIP_REASON_COL_SCHEMA],
+};
 
 const getStateWebhook = trigger({
   type: 'n8n-nodes-base.webhook',
@@ -92,7 +109,7 @@ const getStateWebhook = trigger({
     },
     credentials: { httpHeaderAuth: newCredential('Actualization UI Webhook') },
   },
-  output: [{ headers: { origin: 'https://imin.github.io' }, query: { campaign_id: 'cmp-portugal-2026-05-04' } }],
+  output: [{ headers: { origin: 'https://imin14.github.io' }, query: { campaign_id: 'cmp-portugal-2026-05-04' } }],
 });
 
 const validateGetParams = node({
@@ -104,8 +121,8 @@ const validateGetParams = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode: `const ALLOWED_ORIGINS = ['https://imin.github.io', 'http://localhost:8080'];
-const DEFAULT_ORIGIN = 'https://imin.github.io';
+      jsCode: `const ALLOWED_ORIGINS = ['https://imin14.github.io', 'http://localhost:8080'];
+const DEFAULT_ORIGIN = 'https://imin14.github.io';
 const item = $input.first().json || {};
 const headers = item.headers || {};
 const origin = headers.origin || headers.Origin || '';
@@ -116,7 +133,7 @@ const campaignId = String(query.campaign_id || '').trim();
 return [{ json: { campaign_id: campaignId, list_mode: !campaignId, __cors_origin: corsOrigin } }];`,
     },
   },
-  output: [{ campaign_id: 'cmp-portugal-2026-05-04', __cors_origin: 'https://imin.github.io' }],
+  output: [{ campaign_id: 'cmp-portugal-2026-05-04', __cors_origin: 'https://imin14.github.io' }],
 });
 
 const checkGetParams = ifElse({
@@ -165,7 +182,7 @@ const shapeStateResponse = node({
       mode: 'runOnceForAllItems',
       language: 'javaScript',
       jsCode: `const validated = $('Validate GET params').first().json;
-const corsOrigin = validated.__cors_origin || 'https://imin.github.io';
+const corsOrigin = validated.__cors_origin || 'https://imin14.github.io';
 const requestedCampaignId = validated.campaign_id;
 const allRowsRaw = $input.all().map(i => i.json).filter(r => r && r.row_id);
 // Sentinel rows are bookkeeping markers from the search workflow ("this story
@@ -232,7 +249,7 @@ const progress = { total: blocks.length, reviewed, by_status: byStatus };
 return [{ json: { __status: 200, __body: { campaign, progress, blocks }, __cors_origin: corsOrigin } }];`,
     },
   },
-  output: [{ __status: 200, __body: { campaign: { id: 'x', topic: 'x', source_locale: 'ru' }, progress: { total: 0, reviewed: 0, by_status: {} }, blocks: [] }, __cors_origin: 'https://imin.github.io' }],
+  output: [{ __status: 200, __body: { campaign: { id: 'x', topic: 'x', source_locale: 'ru' }, progress: { total: 0, reviewed: 0, by_status: {} }, blocks: [] }, __cors_origin: 'https://imin14.github.io' }],
 });
 
 const respondGetState = node({
@@ -247,7 +264,7 @@ const respondGetState = node({
       options: {
         responseCode: expr('={{ $json.__status }}'),
         responseHeaders: { entries: [
-          { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin.github.io" }}') },
+          { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin14.github.io" }}') },
           { name: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
           { name: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
           { name: 'Content-Type', value: 'application/json' },
@@ -270,7 +287,7 @@ const respondGetError = node({
       options: {
         responseCode: expr('={{ $json.__status || 400 }}'),
         responseHeaders: { entries: [
-          { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin.github.io" }}') },
+          { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin14.github.io" }}') },
           { name: 'Content-Type', value: 'application/json' },
         ]},
       },
@@ -294,7 +311,7 @@ const postActionWebhook = trigger({
     },
     credentials: { httpHeaderAuth: newCredential('Actualization UI Webhook') },
   },
-  output: [{ headers: { origin: 'https://imin.github.io' }, body: { campaign_id: 'cmp-x', row_id: 'r-1', action: 'accept' } }],
+  output: [{ headers: { origin: 'https://imin14.github.io' }, body: { campaign_id: 'cmp-x', row_id: 'r-1', action: 'accept' } }],
 });
 
 const validatePostBody = node({
@@ -306,9 +323,9 @@ const validatePostBody = node({
     parameters: {
       mode: 'runOnceForAllItems',
       language: 'javaScript',
-      jsCode: `const ALLOWED_ORIGINS = ['https://imin.github.io', 'http://localhost:8080'];
-const DEFAULT_ORIGIN = 'https://imin.github.io';
-const VALID_ACTIONS = ['accept', 'edit', 'skip', 'delete'];
+      jsCode: `const ALLOWED_ORIGINS = ['https://imin14.github.io', 'http://localhost:8080'];
+const DEFAULT_ORIGIN = 'https://imin14.github.io';
+const VALID_ACTIONS = ['accept', 'edit', 'skip', 'delete', 'revert'];
 const SAFETY_DRY_RUN = true;
 const item = $input.first().json || {};
 const headers = item.headers || {};
@@ -322,15 +339,19 @@ if (!rowId || !action) {
   return [{ json: { __error: 'row_id and action are required', __status: 400, __cors_origin: corsOrigin } }];
 }
 if (VALID_ACTIONS.indexOf(action) < 0) {
-  return [{ json: { __error: 'invalid action; expected accept|edit|skip|delete', __status: 400, __cors_origin: corsOrigin } }];
+  return [{ json: { __error: 'invalid action; expected accept|edit|skip|delete|revert', __status: 400, __cors_origin: corsOrigin } }];
 }
 const editedPayloadStr = body.edited_payload ? JSON.stringify(body.edited_payload) : '';
 const skipReasonStr = body.skip_reason ? JSON.stringify(body.skip_reason) : '';
-const newStatus = action === 'accept' ? 'accepted' : action === 'edit' ? 'edited' : action === 'skip' ? 'skipped' : 'deleted';
+const newStatus = action === 'accept' ? 'accepted'
+  : action === 'edit' ? 'edited'
+  : action === 'skip' ? 'skipped'
+  : action === 'delete' ? 'deleted'
+  : 'proposed'; // revert
 return [{ json: { row_id: rowId, campaign_id: campaignId, action, new_status: newStatus, edited_payload_str: editedPayloadStr, skip_reason_str: skipReasonStr, updated_at: new Date().toISOString(), safety_dry_run: SAFETY_DRY_RUN, __cors_origin: corsOrigin } }];`,
     },
   },
-  output: [{ row_id: 'r-1', campaign_id: 'cmp-x', action: 'accept', new_status: 'accepted', edited_payload_str: '', skip_reason_str: '', updated_at: '2026-05-05T00:00:00.000Z', safety_dry_run: true, __cors_origin: 'https://imin.github.io' }],
+  output: [{ row_id: 'r-1', campaign_id: 'cmp-x', action: 'accept', new_status: 'accepted', edited_payload_str: '', skip_reason_str: '', updated_at: '2026-05-05T00:00:00.000Z', safety_dry_run: true, __cors_origin: 'https://imin14.github.io' }],
 });
 
 const checkPostParams = ifElse({
@@ -360,6 +381,7 @@ const routeByAction = switchCase({
         { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ leftValue: expr('={{ $json.action }}'), rightValue: 'edit', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'edit' },
         { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ leftValue: expr('={{ $json.action }}'), rightValue: 'skip', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'skip' },
         { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ leftValue: expr('={{ $json.action }}'), rightValue: 'delete', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'delete' },
+        { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ leftValue: expr('={{ $json.action }}'), rightValue: 'revert', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'revert' },
       ]},
     },
   },
@@ -381,18 +403,22 @@ const updateDelete = node({
   type: 'n8n-nodes-base.dataTable', version: 1.1,
   config: { name: 'Update row → deleted', position: [960, 780], alwaysOutputData: true, parameters: { resource: 'row', operation: 'update', dataTableId: { __rl: true, mode: 'id', value: DATA_TABLE_ID, cachedResultName: DATA_TABLE_NAME }, matchType: 'allConditions', filters: { conditions: [{ keyName: 'row_id', condition: 'eq', keyValue: expr('={{ $json.row_id }}') }] }, columns: COLUMNS_DELETE } },
 });
+const updateRevert = node({
+  type: 'n8n-nodes-base.dataTable', version: 1.1,
+  config: { name: 'Update row → reverted', position: [960, 940], alwaysOutputData: true, parameters: { resource: 'row', operation: 'update', dataTableId: { __rl: true, mode: 'id', value: DATA_TABLE_ID, cachedResultName: DATA_TABLE_NAME }, matchType: 'allConditions', filters: { conditions: [{ keyName: 'row_id', condition: 'eq', keyValue: expr('={{ $json.row_id }}') }] }, columns: COLUMNS_REVERT } },
+});
 
 const buildPostOk = node({
   type: 'n8n-nodes-base.code', version: 2,
   config: { name: 'Build POST ok', position: [1200, 500], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const v = $('Validate POST body').first().json;
-return [{ json: { __status: 200, __body: { status: 'ok', new_status: v.new_status, row_id: v.row_id, dry_run: v.safety_dry_run !== false }, __cors_origin: v.__cors_origin || 'https://imin.github.io' } }];` } },
-  output: [{ __status: 200, __body: { status: 'ok', new_status: 'accepted', row_id: 'r-1', dry_run: true }, __cors_origin: 'https://imin.github.io' }],
+return [{ json: { __status: 200, __body: { status: 'ok', new_status: v.new_status, row_id: v.row_id, dry_run: v.safety_dry_run !== false }, __cors_origin: v.__cors_origin || 'https://imin14.github.io' } }];` } },
+  output: [{ __status: 200, __body: { status: 'ok', new_status: 'accepted', row_id: 'r-1', dry_run: true }, __cors_origin: 'https://imin14.github.io' }],
 });
 
 const respondPostOk = node({
   type: 'n8n-nodes-base.respondToWebhook', version: 1.5,
   config: { name: 'Respond POST ok', position: [1440, 500], parameters: { respondWith: 'json', responseBody: expr('={{ JSON.stringify($json.__body) }}'), options: { responseCode: expr('={{ $json.__status }}'), responseHeaders: { entries: [
-    { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin.github.io" }}') },
+    { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin14.github.io" }}') },
     { name: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
     { name: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
     { name: 'Content-Type', value: 'application/json' },
@@ -402,12 +428,12 @@ const respondPostOk = node({
 const respondPostError = node({
   type: 'n8n-nodes-base.respondToWebhook', version: 1.5,
   config: { name: 'Respond POST error', position: [720, 800], parameters: { respondWith: 'json', responseBody: expr('={{ JSON.stringify({ error: $json.__error || "bad request" }) }}'), options: { responseCode: expr('={{ $json.__status || 400 }}'), responseHeaders: { entries: [
-    { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin.github.io" }}') },
+    { name: 'Access-Control-Allow-Origin', value: expr('{{ $json.__cors_origin || "https://imin14.github.io" }}') },
     { name: 'Content-Type', value: 'application/json' },
   ]} } } },
 });
 
-const archSticky = sticky('## WF-UIBackend\n\nGET /webhook/campaign-state — reads campaign_blocks Data Table.\nPOST /webhook/campaign-action — updates row by row_id; switchCase routes to per-action update node.\n\nAuth: headerAuth credential `Actualization UI Webhook`. CORS: imin.github.io + localhost:8080.', [], { color: 7, width: 480, height: 240 });
+const archSticky = sticky('## WF-UIBackend\n\nGET /webhook/campaign-state — reads campaign_blocks Data Table.\nPOST /webhook/campaign-action — updates row by row_id; switchCase routes to per-action update node.\n\nAuth: headerAuth credential `Actualization UI Webhook`. CORS: imin14.github.io + localhost:8080.', [], { color: 7, width: 480, height: 240 });
 const safetySticky = sticky('## SAFETY_DRY_RUN = true (forced)\n\nIn Validate POST body. Status updates only — no Storyblok writes until LIVE.', [], { color: 3, width: 360, height: 200 });
 
 export default workflow('wf-uibackend', 'Mass Actualization: UI Backend')
@@ -416,6 +442,6 @@ export default workflow('wf-uibackend', 'Mass Actualization: UI Backend')
   .to(checkGetParams.onTrue(fetchCampaignRows.to(shapeStateResponse).to(respondGetState)).onFalse(respondGetError))
   .add(postActionWebhook)
   .to(validatePostBody)
-  .to(checkPostParams.onTrue(routeByAction.onCase(0, updateAccept.to(buildPostOk).to(respondPostOk)).onCase(1, updateEdit.to(buildPostOk).to(respondPostOk)).onCase(2, updateSkip.to(buildPostOk).to(respondPostOk)).onCase(3, updateDelete.to(buildPostOk).to(respondPostOk))).onFalse(respondPostError))
+  .to(checkPostParams.onTrue(routeByAction.onCase(0, updateAccept.to(buildPostOk).to(respondPostOk)).onCase(1, updateEdit.to(buildPostOk).to(respondPostOk)).onCase(2, updateSkip.to(buildPostOk).to(respondPostOk)).onCase(3, updateDelete.to(buildPostOk).to(respondPostOk)).onCase(4, updateRevert.to(buildPostOk).to(respondPostOk))).onFalse(respondPostError))
   .add(archSticky)
   .add(safetySticky);

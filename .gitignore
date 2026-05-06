@@ -3,3 +3,12 @@ node_modules/
 *.log
 .vscode/
 coverage/
+
+# n8n workflow source files contain hardcoded Storyblok management API tokens
+# and IMIN backend Bearer tokens. Source of truth for these workflows lives in
+# n8n itself (deployed via @n8n/workflow-sdk MCP). Re-enable per-file once a
+# credential extraction pass is done (replace tokens with placeholders or env
+# refs).
+pipeline/n8n/wf-cascade.workflow.js
+pipeline/n8n/wf-cascade-rollback.workflow.js
+pipeline/n8n/wf-translate.workflow.js
