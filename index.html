@@ -379,6 +379,33 @@
                 <div class="card p-3 mb-3 border-red-200 bg-red-50 text-sm text-red-800" x-text="publishError"></div>
               </template>
 
+              <template x-if="serverConfig">
+                <div class="card p-0 mb-3 overflow-hidden">
+                  <button type="button"
+                          class="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                          @click="toggleConfig()">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-base">⚙️</span>
+                      <span class="text-sm font-semibold text-[var(--imin-text)]" x-text="t('overview.config.title')"></span>
+                      <span class="text-xs text-[var(--imin-text-muted)] truncate" x-text="serverConfig.keyword ? ('· ' + serverConfig.keyword) : ''"></span>
+                    </div>
+                    <span class="text-xs text-[var(--imin-text-muted)]" x-text="configOpen ? '▴' : '▾'"></span>
+                  </button>
+                  <div x-show="configOpen" x-collapse>
+                    <div class="px-4 pb-4 pt-1 border-t border-[var(--imin-border)]">
+                      <dl class="grid grid-cols-1 sm:grid-cols-[max-content,1fr] gap-x-4 gap-y-2 text-xs">
+                        <template x-for="entry in configEntries()" :key="entry.key">
+                          <div class="contents">
+                            <dt class="font-mono text-[var(--imin-text-muted)] uppercase tracking-wider whitespace-nowrap" x-text="entry.key"></dt>
+                            <dd class="text-[var(--imin-text)] break-words whitespace-pre-wrap" x-text="entry.value"></dd>
+                          </div>
+                        </template>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
               <div class="flex items-end justify-between mb-6 gap-3">
                 <div>
                   <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight" x-text="t('overview.stories_title')"></h1>
@@ -1174,6 +1201,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=22"></script>
+  <script type="module" src="app.js?v=23"></script>
 </body>
 </html>

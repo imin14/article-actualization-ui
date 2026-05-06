@@ -631,6 +631,51 @@ window.appRoot = function () {
       if (this.state.progress.total > 0 && this.state.progress.reviewed >= this.state.progress.total) {
         this.screen = 'done';
       }
+
+      this._loadServerConfig().catch(() => {});
+    },
+
+    serverConfig: null,
+    _serverConfigLoadedFor: null,
+    async _loadServerConfig() {
+      if (!this.state || !this.state.campaign) return;
+      const cid = this.state.campaign.id;
+      if (this._serverConfigLoadedFor === cid && this.serverConfig) return;
+      try {
+        const res = await api.getCampaignConfig(cid);
+        this.serverConfig = (res && res.config) || null;
+        this._serverConfigLoadedFor = cid;
+        if (!this.serverConfig) {
+          const local = getCampaignConfig(cid);
+          if (local) {
+            const { _saved_at, ...cfg } = local;
+            try {
+              await api.saveCampaignConfig(cid, cfg);
+              this.serverConfig = cfg;
+            } catch { /* swallow — backfill is best-effort */ }
+          }
+        }
+      } catch { /* swallow — config is non-critical */ }
+    },
+
+    configOpen: false,
+    toggleConfig() { this.configOpen = !this.configOpen; },
+    configEntries() {
+      const c = this.serverConfig;
+      if (!c) return [];
+      const order = ['campaign_topic','keyword','block_required_keywords','article_any_keywords','context_description','rewrite_prompt','source_locale','folder','content_type','dry_run'];
+      const out = [];
+      for (const k of order) {
+        if (c[k] === undefined || c[k] === null || c[k] === '') continue;
+        out.push({ key: k, value: typeof c[k] === 'object' ? JSON.stringify(c[k]) : String(c[k]) });
+      }
+      for (const k of Object.keys(c)) {
+        if (order.indexOf(k) >= 0) continue;
+        if (k.startsWith('_')) continue;
+        if (c[k] === undefined || c[k] === null || c[k] === '') continue;
+        out.push({ key: k, value: typeof c[k] === 'object' ? JSON.stringify(c[k]) : String(c[k]) });
+      }
+      return out;
     },
 
     goToStory(storyId) {
@@ -1555,6 +1600,13 @@ window.searchScreen = function () {
       // dedupes per-story so re-running just continues from where it
       // stopped.
       saveCampaignConfig(this.queuedCampaignId, { ...this.form, campaign_id: this.queuedCampaignId });
+      // Also push to backend so other editors see it. Best-effort; the
+      // overview screen will try again on load if this fails (e.g. campaign
+      // rows haven't been written yet — n8n updates by campaign_id filter so
+      // we'd no-op here, but the SPA's _loadServerConfig retries later).
+      try {
+        await api.saveCampaignConfig(this.queuedCampaignId, { ...this.form, campaign_id: this.queuedCampaignId });
+      } catch { /* swallow */ }
     },
 
     /** URL pointing the SPA at the campaign that was just queued. */
