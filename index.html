@@ -56,14 +56,13 @@
           <div class="flex items-start gap-3">
             <div class="text-2xl leading-none">⚠️</div>
             <div class="flex-1">
-              <div class="font-semibold text-red-900">Не удалось загрузить кампанию</div>
+              <div class="font-semibold text-red-900" x-text="t('error.title')"></div>
               <div class="text-sm text-red-800 mt-1" x-text="error"></div>
               <template x-if="hasToken">
                 <button type="button"
                         @click="logout()"
-                        class="btn btn-ghost mt-4">
-                  Сбросить токен и войти заново
-                </button>
+                        class="btn btn-ghost mt-4"
+                        x-text="t('header.logout')"></button>
               </template>
             </div>
           </div>
@@ -80,19 +79,23 @@
               <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity hover:opacity-80">
             </a>
           </div>
-          <h1 class="text-xl font-semibold text-[var(--imin-text)] mb-1.5">Доступ к Mass Actualization</h1>
-          <p class="text-sm text-[var(--imin-text-muted)] mb-5">
-            Введите токен доступа, который вы получили от администратора. Он сохранится только в этом браузере.
-          </p>
+          <div class="flex items-center justify-between mb-1.5 gap-3">
+            <h1 class="text-xl font-semibold text-[var(--imin-text)]" x-text="t('auth.title')"></h1>
+            <button type="button" class="btn btn-ghost text-xs uppercase tracking-wider"
+                    @click="toggleLocale()"
+                    :title="t('header.lang_switch_title')"
+                    x-text="locale === 'ru' ? 'EN' : 'RU'"></button>
+          </div>
+          <p class="text-sm text-[var(--imin-text-muted)] mb-5" x-text="t('auth.subtitle')"></p>
           <form @submit.prevent="submitAuthToken()">
             <label class="block">
-              <span class="block text-xs font-medium text-[var(--imin-text-muted)] uppercase tracking-wide mb-1.5">Токен</span>
+              <span class="block text-xs font-medium text-[var(--imin-text-muted)] uppercase tracking-wide mb-1.5" x-text="t('auth.token_label')"></span>
               <input type="password"
                      x-model="authForm.token"
                      :disabled="authForm.saving"
                      autocomplete="current-password"
                      autofocus
-                     placeholder="Вставьте сюда"
+                     :placeholder="t('auth.token_placeholder')"
                      class="w-full px-3 py-2 text-sm rounded-lg border border-[var(--imin-border)] bg-white/80 backdrop-blur focus:outline-none focus:ring-2 focus:ring-[var(--imin-navy)]/30 focus:border-[var(--imin-navy)]/40">
             </label>
             <template x-if="authForm.error">
@@ -102,13 +105,11 @@
             <button type="submit"
                     :disabled="authForm.saving || !authForm.token"
                     class="btn btn-primary w-full mt-5 justify-center">
-              <span x-show="!authForm.saving">Войти</span>
-              <span x-show="authForm.saving">Сохраняю…</span>
+              <span x-show="!authForm.saving" x-text="t('auth.submit')"></span>
+              <span x-show="authForm.saving" x-text="t('auth.submitting')"></span>
             </button>
           </form>
-          <p class="text-xs text-[var(--imin-text-subtle)] mt-5 leading-relaxed">
-            Токен хранится локально в этом браузере (localStorage). Если работаете на чужом компьютере — нажмите "Выйти" в шапке после завершения работы.
-          </p>
+          <p class="text-xs text-[var(--imin-text-subtle)] mt-5 leading-relaxed" x-text="t('auth.footer_note')"></p>
         </div>
       </div>
     </template>
@@ -118,12 +119,16 @@
       <div class="min-h-screen flex flex-col">
         <header class="glass-header sticky top-0 z-30">
           <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-6">
-            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="shrink-0" title="immigrantinvest.com">
-              <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity hover:opacity-80">
+            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="shrink-0" :title="t('header.brand_alt')">
+              <img src="assets/logo.svg" :alt="t('header.brand_alt')" class="h-7 transition-opacity hover:opacity-80">
             </a>
             <div class="flex-1"></div>
+            <button type="button" class="btn btn-ghost shrink-0 text-xs uppercase tracking-wider"
+                    @click="toggleLocale()"
+                    :title="t('header.lang_switch_title')"
+                    x-text="locale === 'ru' ? 'EN' : 'RU'"></button>
             <template x-if="hasToken">
-              <button type="button" @click="logout()" class="btn btn-ghost shrink-0" title="Удалить токен из этого браузера">Выйти</button>
+              <button type="button" @click="logout()" class="btn btn-ghost shrink-0" :title="t('header.logout_title')" x-text="t('header.logout')"></button>
             </template>
           </div>
         </header>
@@ -131,19 +136,17 @@
         <main class="max-w-5xl mx-auto px-6 py-8 w-full">
           <div class="flex items-end justify-between mb-6 gap-3">
             <div>
-              <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight">Кампании</h1>
-              <div class="text-sm text-[var(--imin-text-muted)] mt-1">
-                <span x-text="campaigns.length"></span> кампаний в работе
-              </div>
+              <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight" x-text="t('campaigns.title')"></h1>
+              <div class="text-sm text-[var(--imin-text-muted)] mt-1" x-text="t('campaigns.count', { count: campaigns.length })"></div>
             </div>
             <div class="flex items-center gap-2">
               <button class="btn btn-ghost" @click="loadCampaigns()" :disabled="campaignsLoading">
                 <svg class="w-3.5 h-3.5" :class="campaignsLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Обновить
+                <span x-text="t('campaigns.refresh')"></span>
               </button>
               <button class="btn btn-primary" @click="goToSearch()">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                Новая кампания
+                <span x-text="t('campaigns.new')"></span>
               </button>
             </div>
           </div>
@@ -163,9 +166,9 @@
           <template x-if="!campaignsLoading && !campaigns.length && !campaignsError">
             <div class="card p-8 text-center">
               <div class="text-2xl mb-2">∅</div>
-              <div class="font-semibold text-[var(--imin-text)] mb-1">Пока нет кампаний</div>
-              <div class="text-sm text-[var(--imin-text-muted)] mb-5">Запусти первый поиск — это создаст кампанию.</div>
-              <button class="btn btn-primary" @click="goToSearch()">Запустить поиск</button>
+              <div class="font-semibold text-[var(--imin-text)] mb-1" x-text="t('campaigns.empty')"></div>
+              <div class="text-sm text-[var(--imin-text-muted)] mb-5" x-text="t('campaigns.empty_subtitle')"></div>
+              <button class="btn btn-primary" @click="goToSearch()" x-text="t('campaigns.empty_cta')"></button>
             </div>
           </template>
 
@@ -180,9 +183,9 @@
                     </div>
                     <div class="font-medium text-[15px] text-[var(--imin-text)] truncate" x-text="c.topic || c.id"></div>
                     <div class="text-xs text-[var(--imin-text-muted)] mt-1">
-                      <span x-text="c.total"></span> блоков
+                      <span x-text="c.total"></span> <span x-text="t('campaigns.item.blocks')"></span>
                       <template x-if="c.last_updated_at">
-                        <span> · обновлено <span x-text="new Date(c.last_updated_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })"></span></span>
+                        <span> · <span x-text="t('campaigns.item.updated')"></span> <span x-text="new Date(c.last_updated_at).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })"></span></span>
                       </template>
                     </div>
                   </div>
@@ -211,21 +214,21 @@
         <!-- Header — logo + campaign + progress -->
         <header class="glass-header sticky top-0 z-30">
           <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-6">
-            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="shrink-0 flex items-center gap-3 group" title="immigrantinvest.com">
-              <img src="assets/logo.svg" alt="Immigrant Invest" class="h-7 transition-opacity group-hover:opacity-80">
+            <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="shrink-0 flex items-center gap-3 group" :title="t('header.brand_alt')">
+              <img src="assets/logo.svg" :alt="t('header.brand_alt')" class="h-7 transition-opacity group-hover:opacity-80">
             </a>
             <template x-if="state">
               <div class="contents">
                 <div class="hidden sm:block w-px h-7 bg-[var(--imin-border)]"></div>
                 <div class="min-w-0 flex-1">
-                  <div class="section-label">Campaign</div>
+                  <div class="section-label" x-text="t('header.campaign')"></div>
                   <button type="button" @click="goToCampaigns()"
                           class="font-semibold text-[15px] text-[var(--imin-text)] truncate text-left hover:underline focus:outline-none"
-                          title="К списку кампаний"
+                          :title="t('header.back_to_campaigns_title')"
                           x-text="state.campaign.topic"></button>
                 </div>
                 <div class="hidden sm:flex flex-col items-end shrink-0">
-                  <div class="section-label">Search</div>
+                  <div class="section-label" x-text="t('header.search')"></div>
                   <div class="flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full"
                           :class="{
@@ -233,11 +236,11 @@
                             'bg-slate-400': !isSearchRunning && searchStatusLabel === 'idle',
                             'bg-slate-300': searchStatusLabel === 'empty',
                           }"></span>
-                    <span class="text-xs font-medium text-[var(--imin-text-muted)] capitalize" x-text="searchStatusLabel"></span>
+                    <span class="text-xs font-medium text-[var(--imin-text-muted)] capitalize" x-text="t('campaigns.status.' + searchStatusLabel)"></span>
                   </div>
                 </div>
                 <div class="hidden sm:flex flex-col items-end shrink-0">
-                  <div class="section-label">Progress</div>
+                  <div class="section-label" x-text="t('header.progress')"></div>
                   <div class="text-sm text-[var(--imin-text)] font-medium tabular-nums">
                     <span x-text="state.progress.reviewed"></span> /
                     <span x-text="state.progress.total"></span>
@@ -248,13 +251,16 @@
             <template x-if="!state">
               <div class="flex-1"></div>
             </template>
+            <button type="button" class="btn btn-ghost shrink-0 text-xs uppercase tracking-wider"
+                    @click="toggleLocale()"
+                    :title="t('header.lang_switch_title')"
+                    x-text="locale === 'ru' ? 'EN' : 'RU'"></button>
             <template x-if="hasToken">
               <button type="button"
                       @click="logout()"
                       class="btn btn-ghost shrink-0"
-                      title="Удалить токен из этого браузера">
-                Выйти
-              </button>
+                      :title="t('header.logout_title')"
+                      x-text="t('header.logout')"></button>
             </template>
           </div>
           <template x-if="state">
@@ -274,7 +280,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
                 </svg>
-                Все кампании
+                <span x-text="t('overview.back')"></span>
               </button>
               <!-- Search-execution status banner -->
               <div class="card p-4 mb-5 flex items-center gap-4 flex-wrap"
@@ -291,16 +297,16 @@
                         }"></span>
                   <div class="min-w-0">
                     <div class="text-sm font-semibold text-[var(--imin-text)]">
-                      <template x-if="isSearchRunning"><span>Поиск работает в n8n</span></template>
-                      <template x-if="!isSearchRunning && searchStatusLabel === 'idle'"><span>Поиск не запущен</span></template>
-                      <template x-if="searchStatusLabel === 'empty'"><span>Кампания пуста — поиск ещё не запускали</span></template>
+                      <template x-if="isSearchRunning"><span x-text="t('overview.search.running')"></span></template>
+                      <template x-if="!isSearchRunning && searchStatusLabel === 'idle'"><span x-text="t('overview.search.idle')"></span></template>
+                      <template x-if="searchStatusLabel === 'empty'"><span x-text="t('overview.search.empty')"></span></template>
                     </div>
                     <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">
                       <template x-if="latestBlockUpdatedAt">
-                        <span>Последняя активность: <span x-text="new Date(latestBlockUpdatedAt).toLocaleTimeString('ru-RU')"></span></span>
+                        <span x-text="t('overview.search.last_activity', { time: new Date(latestBlockUpdatedAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'ru-RU') })"></span>
                       </template>
                       <template x-if="!latestBlockUpdatedAt">
-                        <span>Уже обработанные сторис будут пропущены</span>
+                        <span x-text="t('overview.search.skip_processed')"></span>
                       </template>
                     </div>
                   </div>
@@ -312,7 +318,7 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.5 12a7.5 7.5 0 0113.5-4.5M19.5 12a7.5 7.5 0 01-13.5 4.5"/>
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 3v4.5h-4.5M6 21v-4.5h4.5"/>
                     </svg>
-                    <span x-text="hasResumeConfig ? 'Возобновить поиск' : 'Запустить поиск'"></span>
+                    <span x-text="hasResumeConfig ? t('overview.search.resume') : t('overview.search.start')"></span>
                   </button>
                 </template>
                 <template x-if="resumeMessage">
@@ -338,20 +344,19 @@
                     <span class="text-2xl shrink-0">🎯</span>
                     <div class="min-w-0">
                       <div class="text-sm font-semibold text-emerald-900">
-                        <template x-if="readyToPublish"><span>Готово к публикации</span></template>
-                        <template x-if="!readyToPublish"><span>Готово к частичной публикации</span></template>
+                        <template x-if="readyToPublish"><span x-text="t('overview.publish.banner.ready')"></span></template>
+                        <template x-if="!readyToPublish"><span x-text="t('overview.publish.banner.partial')"></span></template>
                       </div>
                       <div class="text-xs text-emerald-800 mt-0.5">
-                        <span x-text="publishableRowCount"></span> блоков можно пушить в Storyblok.
+                        <span x-text="t('overview.publish.banner.subtitle', { count: publishableRowCount })"></span>
                         <template x-if="unreviewedRowCount > 0">
-                          <span> Ещё <span class="font-semibold" x-text="unreviewedRowCount"></span> ждут review — их можно опубликовать позже отдельным заходом.</span>
+                          <span x-text="t('overview.publish.banner.unreviewed', { count: unreviewedRowCount })"></span>
                         </template>
                       </div>
                     </div>
                   </div>
-                  <button class="btn btn-primary shrink-0" @click="openPublishModal()" :disabled="publishBusy">
-                    🚀 Опубликовать <span x-text="publishableRowCount"></span> <span x-text="publishableRowCount === 1 ? 'блок' : 'блоков'"></span>
-                  </button>
+                  <button class="btn btn-primary shrink-0" @click="openPublishModal()" :disabled="publishBusy"
+                          x-text="t('overview.publish.button', { count: publishableRowCount, word: publishableRowCount === 1 ? t('overview.publish.button_word_one') : t('overview.publish.button_word_many') })"></button>
                 </div>
               </template>
               <template x-if="hasCascadedRows">
@@ -359,17 +364,12 @@
                   <div class="flex items-center gap-2.5 min-w-0 flex-1">
                     <span class="text-2xl shrink-0">✅</span>
                     <div class="min-w-0">
-                      <div class="text-sm font-semibold text-blue-900">
-                        Опубликовано в Storyblok (draft)
-                      </div>
-                      <div class="text-xs text-blue-800 mt-0.5">
-                        <span x-text="state.progress.cascaded || 0"></span> блоков опубликованы. Проверь в Storyblok admin и опубликуй вручную.
-                      </div>
+                      <div class="text-sm font-semibold text-blue-900" x-text="t('overview.cascade.banner.title')"></div>
+                      <div class="text-xs text-blue-800 mt-0.5" x-text="t('overview.cascade.banner.subtitle', { count: state.progress.cascaded || 0 })"></div>
                     </div>
                   </div>
-                  <button class="btn btn-danger shrink-0" @click="rollbackStory(null)" :disabled="publishBusy" title="Откатить ВСЕ опубликованные stories к состоянию до cascade'а">
-                    ↶ Откатить кампанию
-                  </button>
+                  <button class="btn btn-danger shrink-0" @click="rollbackStory(null)" :disabled="publishBusy"
+                          x-text="t('overview.cascade.rollback_campaign')"></button>
                 </div>
               </template>
               <template x-if="publishMessage">
@@ -381,10 +381,9 @@
 
               <div class="flex items-end justify-between mb-6 gap-3">
                 <div>
-                  <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight">Stories</h1>
+                  <h1 class="text-2xl font-bold text-[var(--imin-text)] tracking-tight" x-text="t('overview.stories_title')"></h1>
                   <div class="text-sm text-[var(--imin-text-muted)] mt-1">
-                    <span x-text="groups.length"></span> stories ·
-                    <span x-text="state.progress.total"></span> blocks ·
+                    <span x-text="t('overview.stories_subtitle', { stories: groups.length, blocks: state.progress.total })"></span> ·
                     <span class="locale-chip ml-1" x-text="state.campaign.source_locale"></span>
                   </div>
                 </div>
@@ -393,11 +392,11 @@
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Новая campaign
+                    <span x-text="t('campaigns.new')"></span>
                   </button>
                   <button type="button"
                           class="help-pill"
-                          title="Keyboard shortcuts (?)"
+                          :title="t('help.title')"
                           @click="helpOpen = true">?</button>
                 </div>
               </div>
@@ -423,10 +422,10 @@
                                 x-text="badge.label + ' ' + badge.count"></span>
                         </template>
                         <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].cascaded && !cascadeStateByStory[g.story_id].partial">
-                          <span class="badge bg-blue-100 text-blue-800" title="В Storyblok как draft">✓ опубликовано</span>
+                          <span class="badge bg-blue-100 text-blue-800" :title="t('overview.story.badge.published_title')" x-text="t('overview.story.badge.published')"></span>
                         </template>
                         <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].partial">
-                          <span class="badge bg-blue-100 text-blue-800" title="Часть блоков опубликована, остальные ещё ждут review">✓ опубликовано (частично)</span>
+                          <span class="badge bg-blue-100 text-blue-800" :title="t('overview.story.badge.published_partial_title')" x-text="t('overview.story.badge.published_partial')"></span>
                         </template>
                         <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].translation">
                           <button class="text-base ml-1 cursor-help select-none transition-opacity hover:opacity-100"
@@ -437,32 +436,13 @@
                                   }"
                                   @click.stop="cascadeStateByStory[g.story_id].translation.status === 'stale' ? retryTranslation(g.story_id) : null"
                                   :disabled="publishBusy"
-                                  :title="(() => {
-                                    const t = cascadeStateByStory[g.story_id].translation;
-                                    const lines = [];
-                                    if (t.published) lines.push('🚀 Опубликовано в live'); else lines.push('📝 Сохранено как draft');
-                                    if (t.source) lines.push('Master: ' + t.source);
-                                    if (t.status === 'triggered' && t.target_locales.length) {
-                                      lines.push('🌍 Переводы запущены: ' + t.target_locales.join(', '));
-                                      if (t.triggered_at) lines.push('Триггер: ' + new Date(t.triggered_at).toLocaleString('ru-RU'));
-                                    } else if (t.status === 'queued') {
-                                      lines.push('🌍 Перевод в очереди...');
-                                    } else if (t.status === 'no_targets') {
-                                      lines.push('🌍 Переводы не нужны (нет существующих локалей)');
-                                    } else if (t.status === 'stale') {
-                                      lines.push('⚠ Перевод запущен давно — возможно завис');
-                                      lines.push('Click чтобы перезапустить');
-                                    } else if (t.status === 'skipped') {
-                                      lines.push('🌍 Переводы выключены при cascade');
-                                    }
-                                    return lines.join('\n');
-                                  })()">🌍</button>
+                                  :title="translationTooltip(g.story_id)">🌍</button>
                         </template>
                         <template x-if="cascadeStateByStory[g.story_id] && cascadeStateByStory[g.story_id].cascaded">
                           <button class="btn btn-ghost text-xs ml-1"
                                   @click.stop="rollbackStory(g.story_id)"
                                   :disabled="publishBusy"
-                                  title="Откатить эту story в Storyblok к состоянию до публикации (вернётся в очередь review для повторной публикации)">↶</button>
+                                  :title="t('overview.story.rollback_title')">↶</button>
                         </template>
                         <svg class="w-4 h-4 text-[var(--imin-text-subtle)] ml-1 transition-transform group-hover:translate-x-0.5"
                              fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -506,7 +486,7 @@
                       <h1 class="story-title" x-text="group.story_name"></h1>
                       <button type="button"
                               class="help-pill shrink-0"
-                              title="Keyboard shortcuts (?)"
+                              :title="t('help.title')"
                               @click="helpOpen = true">?</button>
                     </div>
                   </div>
@@ -530,9 +510,11 @@
                           <div class="flex items-center gap-1.5 shrink-0">
                             <span class="badge"
                                   :class="'badge-' + block.status"
-                                  x-text="block.status"></span>
+                                  x-text="t('status.' + block.status)"></span>
                             <template x-if="isPublished(block)">
-                              <span class="badge bg-blue-100 text-blue-800" title="В Storyblok как draft (или published — зависит от mode)">✓ published</span>
+                              <span class="badge bg-blue-100 text-blue-800"
+                                    :title="t('story.published_badge_title')"
+                                    x-text="t('story.published_badge')"></span>
                             </template>
                           </div>
                         </div>
@@ -555,8 +537,8 @@
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                             </svg>
                             <div>
-                              <div class="font-semibold mb-0.5">LLM предлагает удалить весь блок</div>
-                              <div class="text-xs text-red-800">Блок устарел и должен быть полностью убран из статьи. Подтверди удаление, либо оставь блок (Skip), либо отредактируй вручную.</div>
+                              <div class="font-semibold mb-0.5" x-text="t('story.proposed_delete.title')"></div>
+                              <div class="text-xs text-red-800" x-text="t('story.proposed_delete.body')"></div>
                             </div>
                           </div>
                         </template>
@@ -569,9 +551,8 @@
                                 <span x-text="fieldName"></span>
                                 <template x-if="!hasChanges(block, fieldName)">
                                   <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-                                        style="background: rgba(255, 149, 0, 0.18); color: #b45309;">
-                                    ⚠ no changes proposed
-                                  </span>
+                                        style="background: rgba(255, 149, 0, 0.18); color: #b45309;"
+                                        x-text="t('story.field.no_changes')"></span>
                                 </template>
                               </div>
                               <template x-if="hasChanges(block, fieldName)">
@@ -601,10 +582,10 @@
                                same regardless of how editor reached it. -->
                           <template x-if="(block.status === 'proposed' || block.status === 'pending' || block.status === 'error') && !editing">
                             <div class="flex flex-wrap gap-2">
-                              <button class="btn btn-success" :disabled="busy" @click.stop="onAccept()">Accept</button>
-                              <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">Edit</button>
-                              <button class="btn btn-neutral" :disabled="busy" @click.stop="openSkipModal()">Skip</button>
-                              <button class="btn btn-danger ml-auto" :disabled="busy" @click.stop="openDeleteConfirm()">Delete block</button>
+                              <button class="btn btn-success" :disabled="busy" @click.stop="onAccept()" x-text="t('story.action.accept')"></button>
+                              <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()" x-text="t('story.action.edit')"></button>
+                              <button class="btn btn-neutral" :disabled="busy" @click.stop="openSkipModal()" x-text="t('story.action.skip')"></button>
+                              <button class="btn btn-danger ml-auto" :disabled="busy" @click.stop="openDeleteConfirm()" x-text="t('story.action.delete')"></button>
                             </div>
                           </template>
 
@@ -614,9 +595,9 @@
                                also override into edit or keep the block. -->
                           <template x-if="block.status === 'proposed_delete' && !editing">
                             <div class="flex flex-wrap gap-2">
-                              <button class="btn btn-danger" :disabled="busy" @click.stop="openDeleteConfirm()">Подтвердить удаление</button>
-                              <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()">Отредактировать вместо удаления</button>
-                              <button class="btn btn-neutral ml-auto" :disabled="busy" @click.stop="openSkipModal()">Skip — оставить блок</button>
+                              <button class="btn btn-danger" :disabled="busy" @click.stop="openDeleteConfirm()" x-text="t('story.action.confirm_delete')"></button>
+                              <button class="btn btn-warning" :disabled="busy" @click.stop="startEdit()" x-text="t('story.action.edit_instead')"></button>
+                              <button class="btn btn-neutral ml-auto" :disabled="busy" @click.stop="openSkipModal()" x-text="t('story.action.skip_keep')"></button>
                             </div>
                           </template>
 
@@ -635,12 +616,8 @@
                               </div>
                             </template>
                             <div class="flex gap-2 pt-1">
-                              <button class="btn btn-success" :disabled="busy" @click.stop="onAcceptEdited()">
-                                Save & Apply
-                              </button>
-                              <button class="btn btn-ghost" :disabled="busy" @click.stop="cancelEdit()">
-                                Cancel
-                              </button>
+                              <button class="btn btn-success" :disabled="busy" @click.stop="onAcceptEdited()" x-text="t('story.action.save_apply')"></button>
+                              <button class="btn btn-ghost" :disabled="busy" @click.stop="cancelEdit()" x-text="t('common.cancel')"></button>
                             </div>
                           </div>
 
@@ -662,30 +639,28 @@
                                         'bg-slate-400': block.status === 'skipped',
                                         'bg-red-500': block.status === 'deleted'
                                       }"></span>
-                                Decided · <span class="font-medium text-[var(--imin-text)]" x-text="block.status"></span>
+                                <span x-text="t('story.decided')"></span><span class="font-medium text-[var(--imin-text)]" x-text="t('status.' + block.status)"></span>
                               </div>
                               <div class="flex items-center gap-2">
                                 <template x-if="_root && _root.isCurrentlyPublished(block)">
                                   <button class="btn btn-warning text-sm"
                                           :disabled="busy || (_root && _root.publishBusy)"
                                           @click.stop="_root.rollbackBlock(block.row_id)"
-                                          title="Откатить публикацию ЭТОГО блока (вернёт в Storyblok состояние до cascade'а; блок снова станет publishable)">
-                                    ↶ Откатить публикацию
-                                  </button>
+                                          :title="t('story.action.rollback_publish_title')"
+                                          x-text="t('story.action.rollback_publish')"></button>
                                 </template>
                                 <button class="btn btn-ghost text-sm"
                                         :disabled="busy"
                                         @click.stop="onRevert()"
-                                        title="Откатить решение редактора и вернуть блок в очередь">
-                                  ↶ Откатить решение
-                                </button>
+                                        :title="t('story.action.revert_decision_title')"
+                                        x-text="t('story.action.revert_decision')"></button>
                               </div>
                             </div>
                           </template>
 
                           <template x-if="error">
                             <div class="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5"
-                                 x-text="'Ошибка: ' + error"></div>
+                                 x-text="t('common.error_prefix') + error"></div>
                           </template>
 
                           <!-- Skip modal -->
@@ -698,26 +673,26 @@
                                class="modal-backdrop"
                                @click.self="closeSkipModal()">
                             <div class="modal-panel" @click.stop>
-                              <h3 class="text-lg font-semibold mb-1" :id="'skip-modal-title-' + block.row_id">Skip this block</h3>
-                              <p class="text-sm text-[var(--imin-text-muted)] mb-4">Why are you skipping it? (optional but helpful for audit)</p>
+                              <h3 class="text-lg font-semibold mb-1" :id="'skip-modal-title-' + block.row_id" x-text="t('skip.modal.title')"></h3>
+                              <p class="text-sm text-[var(--imin-text-muted)] mb-4" x-text="t('skip.modal.subtitle')"></p>
 
                               <div class="space-y-2 text-sm">
                                 <template x-for="opt in skipReasonOptions" :key="opt.value">
                                   <label class="flex items-start gap-2.5 cursor-pointer p-2 rounded-md hover:bg-[var(--imin-bg)] transition-colors">
                                     <input type="radio" :value="opt.value" x-model="skipForm.category"
                                            class="mt-0.5 accent-[var(--imin-navy)]">
-                                    <span class="text-[var(--imin-text)]" x-text="opt.label"></span>
+                                    <span class="text-[var(--imin-text)]" x-text="t('skip.reason.' + opt.value)"></span>
                                   </label>
                                 </template>
                               </div>
 
                               <textarea class="edit-textarea mt-3"
-                                        rows="3" placeholder="Комментарий (опционально)"
+                                        rows="3" :placeholder="t('skip.modal.comment_placeholder')"
                                         x-model="skipForm.comment"></textarea>
 
                               <div class="flex justify-end gap-2 mt-4">
-                                <button class="btn btn-ghost" @click="closeSkipModal()">Cancel</button>
-                                <button class="btn btn-primary" :disabled="busy" @click="confirmSkip()">Skip</button>
+                                <button class="btn btn-ghost" @click="closeSkipModal()" x-text="t('common.cancel')"></button>
+                                <button class="btn btn-primary" :disabled="busy" @click="confirmSkip()" x-text="t('skip.modal.submit')"></button>
                               </div>
                             </div>
                           </div>
@@ -732,14 +707,11 @@
                                class="modal-backdrop"
                                @click.self="closeDeleteConfirm()">
                             <div class="modal-panel" @click.stop>
-                              <h3 class="text-lg font-semibold mb-2" :id="'delete-modal-title-' + block.row_id">Удалить блок?</h3>
-                              <p class="text-sm text-[var(--imin-text-muted)] mb-4">
-                                Этот блок будет удалён из story в Storyblok (как draft).
-                                Действие отменяемо вручную в Storyblok admin.
-                              </p>
+                              <h3 class="text-lg font-semibold mb-2" :id="'delete-modal-title-' + block.row_id" x-text="t('story.delete_confirm.title')"></h3>
+                              <p class="text-sm text-[var(--imin-text-muted)] mb-4" x-text="t('story.delete_confirm.body')"></p>
                               <div class="flex justify-end gap-2">
-                                <button class="btn btn-ghost" @click="closeDeleteConfirm()">Cancel</button>
-                                <button class="btn btn-danger" :disabled="busy" @click="confirmDelete()">Удалить</button>
+                                <button class="btn btn-ghost" @click="closeDeleteConfirm()" x-text="t('common.cancel')"></button>
+                                <button class="btn btn-danger" :disabled="busy" @click="confirmDelete()" x-text="t('story.delete_confirm.confirm')"></button>
                               </div>
                             </div>
                           </div>
@@ -750,29 +722,24 @@
 
                   <!-- Footer actions -->
                   <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--imin-border)] pt-5">
-                    <button class="btn btn-ghost" @click="goToOverview()">
-                      ← Список stories
-                    </button>
+                    <button class="btn btn-ghost" @click="goToOverview()" x-text="t('story.footer.back_to_stories')"></button>
                     <div class="flex flex-wrap gap-2">
                       <button class="btn btn-success"
                               :disabled="!hasPendingBlocks() || bulkAccepting"
                               @click="bulkAcceptRemaining()">
-                        <span x-show="!bulkAccepting">
-                          Accept all remaining (<span x-text="pendingBlockCount()"></span>)
-                        </span>
+                        <span x-show="!bulkAccepting" x-text="t('story.footer.accept_remaining', { count: pendingBlockCount() })"></span>
                         <span x-show="bulkAccepting" class="inline-flex items-center gap-2">
                           <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                           </svg>
-                          Accepting...
+                          <span x-text="t('story.footer.accepting')"></span>
                         </span>
                       </button>
                       <button class="btn btn-primary"
                               :disabled="hasPendingBlocks()"
-                              @click="advanceToNextStory()">
-                        Save & Next Story →
-                      </button>
+                              @click="advanceToNextStory()"
+                              x-text="t('story.footer.save_next')"></button>
                     </div>
                   </div>
                 </div>
@@ -785,34 +752,31 @@
             <div class="animate-scale-in">
               <div class="card p-10 text-center max-w-2xl mx-auto">
                 <div class="text-6xl mb-3 inline-block animate-pulse-once">🎉</div>
-                <h1 class="text-3xl font-bold tracking-tight text-[var(--imin-text)] mb-2">Campaign reviewed</h1>
-                <p class="text-[15px] text-[var(--imin-text-muted)] mb-8 max-w-md mx-auto">
-                  Все блоки кампании рассмотрены. Drafts записаны в Storyblok.
-                  Опубликовать драфты вручную в Storyblok admin, потом запустить cascade-translation workflow в n8n.
-                </p>
+                <h1 class="text-3xl font-bold tracking-tight text-[var(--imin-text)] mb-2" x-text="t('done.title_alt')"></h1>
+                <p class="text-[15px] text-[var(--imin-text-muted)] mb-8 max-w-md mx-auto" x-text="t('done.subtitle_alt')"></p>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
                   <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
                     <div class="text-3xl font-bold text-emerald-700 tabular-nums"
                          x-text="(state.progress.by_status.accepted || 0) + (state.progress.by_status.edited || 0)"></div>
-                    <div class="text-[11px] uppercase font-semibold tracking-wider text-emerald-700 mt-1">accepted / edited</div>
+                    <div class="text-[11px] uppercase font-semibold tracking-wider text-emerald-700 mt-1" x-text="t('done.metric.accepted_edited')"></div>
                   </div>
                   <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                     <div class="text-3xl font-bold text-slate-700 tabular-nums"
                          x-text="state.progress.by_status.skipped || 0"></div>
-                    <div class="text-[11px] uppercase font-semibold tracking-wider text-slate-700 mt-1">skipped</div>
+                    <div class="text-[11px] uppercase font-semibold tracking-wider text-slate-700 mt-1" x-text="t('done.metric.skipped')"></div>
                   </div>
                   <div class="bg-red-50 border border-red-100 rounded-xl p-4">
                     <div class="text-3xl font-bold text-red-700 tabular-nums"
                          x-text="state.progress.by_status.deleted || 0"></div>
-                    <div class="text-[11px] uppercase font-semibold tracking-wider text-red-700 mt-1">deleted</div>
+                    <div class="text-[11px] uppercase font-semibold tracking-wider text-red-700 mt-1" x-text="t('done.metric.deleted')"></div>
                   </div>
                   <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
                     <div class="text-3xl font-bold text-amber-700 tabular-nums"
                          x-text="state.progress.by_status.error || 0"></div>
-                    <div class="text-[11px] uppercase font-semibold tracking-wider text-amber-700 mt-1">errors</div>
+                    <div class="text-[11px] uppercase font-semibold tracking-wider text-amber-700 mt-1" x-text="t('done.metric.errors')"></div>
                   </div>
                 </div>
-                <button class="btn btn-ghost mx-auto" @click="goToOverview()">← К списку stories</button>
+                <button class="btn btn-ghost mx-auto" @click="goToOverview()" x-text="t('done.back_to_overview')"></button>
               </div>
             </div>
           </template>
@@ -825,111 +789,114 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
                 </svg>
-                Назад
+                <span x-text="t('search.back')"></span>
               </button>
 
               <!-- Form view -->
               <template x-if="!submitted && !submitting">
                 <div>
                   <div class="mb-7">
-                    <div class="section-label mb-1">New campaign</div>
-                    <h1 class="story-title">Find affected articles</h1>
-                    <p class="text-sm text-[var(--imin-text-muted)] mt-2">
-                      Запусти поиск кандидатов в Storyblok для массовой актуализации. LLM rewrite предлагается автоматически и попадает в очередь review.
-                    </p>
+                    <div class="section-label mb-1" x-text="t('search.section.new_campaign')"></div>
+                    <h1 class="story-title" x-text="t('search.section.find_articles')"></h1>
+                    <p class="text-sm text-[var(--imin-text-muted)] mt-2" x-text="t('search.intro')"></p>
                   </div>
 
                   <div class="card p-6 mb-4">
                     <div class="flex items-center justify-between mb-4">
-                      <div class="section-label">Campaign meta</div>
-                      <button type="button" class="btn btn-link text-xs" @click="fillExample()">Заполнить примером</button>
+                      <div class="section-label" x-text="t('search.section.campaign_meta')"></div>
+                      <button type="button" class="btn btn-link text-xs" @click="fillExample()" x-text="t('search.fill_example_short')"></button>
                     </div>
 
                     <div class="space-y-4">
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Campaign topic</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block" x-text="t('search.field.topic_label')"></span>
                         <input type="text" x-model="form.campaign_topic"
                                placeholder="Portugal Golden Visa: 5 → 10 years"
                                class="edit-textarea" style="font-family: inherit;">
-                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Человеческое имя кампании. Используется в Sheet и Slack.</div>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.topic_hint_alt')"></div>
                       </label>
 
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Campaign ID
-                          <span class="text-[var(--imin-text-subtle)] font-normal">(опционально)</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">
+                          <span x-text="t('search.field.campaign_id_label')"></span>
+                          <span class="text-[var(--imin-text-subtle)] font-normal" x-text="t('search.field.optional_paren')"></span>
                         </span>
                         <input type="text" x-model="form.campaign_id"
                                :placeholder="suggestedCampaignId()"
                                class="edit-textarea">
-                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Если пусто — генерится из topic + даты.</div>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.campaign_id_hint_alt')"></div>
                       </label>
                     </div>
                   </div>
 
                   <div class="card p-6 mb-4">
-                    <div class="section-label mb-4">Search</div>
+                    <div class="section-label mb-4" x-text="t('search.section.search')"></div>
 
                     <div class="space-y-4">
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Keyword</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block" x-text="t('search.field.keyword_label')"></span>
                         <input type="text" x-model="form.keyword"
                                placeholder="5"
                                class="edit-textarea">
-                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">JS substring match (case-insensitive). Пре-фильтр перед LLM — отсеивает ~80% блоков бесплатно.</div>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.keyword_hint_alt')"></div>
                       </label>
 
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Block must also contain (AND)
-                          <span class="text-[var(--imin-text-subtle)] font-normal">— опционально</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">
+                          <span x-text="t('search.field.block_required_label')"></span>
+                          <span class="text-[var(--imin-text-subtle)] font-normal" x-text="'— ' + t('search.field.optional_paren').replace(/^\(|\)$/g, '')"></span>
                         </span>
                         <input type="text" x-model="form.block_required_keywords"
                                placeholder="years"
                                class="edit-textarea">
-                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Comma-separated. Блок попадёт в выборку только если в нём есть Keyword <strong>и</strong> ВСЕ эти термы (case-insensitive). Пусто → проверяется только Keyword.</div>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-html="t('search.field.block_required_hint_alt')"></div>
                       </label>
 
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Article must contain at least one of (OR)
-                          <span class="text-[var(--imin-text-subtle)] font-normal">— опционально</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">
+                          <span x-text="t('search.field.article_any_label')"></span>
+                          <span class="text-[var(--imin-text-subtle)] font-normal" x-text="'— ' + t('search.field.optional_paren').replace(/^\(|\)$/g, '')"></span>
                         </span>
                         <input type="text" x-model="form.article_any_keywords"
                                placeholder="Portugal, Golden Visa"
                                class="edit-textarea">
-                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Comma-separated. Стори целиком пропускается если в её body нет ни одного из этих термов. Самый дешёвый и эффективный способ отсеять не-релевантные статьи.</div>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.article_any_hint_alt')"></div>
                       </label>
 
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Context description</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block" x-text="t('search.field.context_label')"></span>
                         <textarea rows="3" x-model="form.context_description"
                                   placeholder='Mention of "5 years" specifically as the residency period required to apply for Portuguese citizenship via naturalisation.'
                                   class="edit-textarea" style="font-family: inherit;"></textarea>
-                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Промпт для LLM — определяет какие hits релевантны. Чем точнее, тем меньше false positives.</div>
+                        <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.context_hint_alt')"></div>
                       </label>
 
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <label class="block">
-                          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Source locale</span>
+                          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block" x-text="t('search.field.source_locale_label')"></span>
                           <select x-model="form.source_locale" class="edit-textarea" style="font-family: inherit;">
-                            <option value="ru">RU — Russian originals (493 articles)</option>
-                            <option value="en">EN — English originals (526 articles)</option>
+                            <option value="ru" x-text="t('search.field.locale_opt_ru')"></option>
+                            <option value="en" x-text="t('search.field.locale_opt_en')"></option>
                           </select>
-                          <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Фильтр по seo[0].originalLanguage.</div>
+                          <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.source_locale_hint')"></div>
                         </label>
 
                         <label class="block">
-                          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Folder
-                            <span class="text-[var(--imin-text-subtle)] font-normal">(опционально)</span>
+                          <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">
+                            <span x-text="t('search.field.folder_label')"></span>
+                            <span class="text-[var(--imin-text-subtle)] font-normal" x-text="t('search.field.optional_paren')"></span>
                           </span>
                           <input type="text" x-model="form.folder"
                                  placeholder="immigrantinvest/new-blog"
                                  class="edit-textarea">
-                          <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Storyblok starts_with filter.</div>
+                          <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.folder_hint_alt')"></div>
                         </label>
                       </div>
 
                       <label class="block">
-                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Content type
-                          <span class="text-[var(--imin-text-subtle)] font-normal">(опционально)</span>
+                        <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">
+                          <span x-text="t('search.field.content_type_label')"></span>
+                          <span class="text-[var(--imin-text-subtle)] font-normal" x-text="t('search.field.optional_paren')"></span>
                         </span>
                         <input type="text" x-model="form.content_type"
                                placeholder="flatArticle"
@@ -939,13 +906,13 @@
                   </div>
 
                   <div class="card p-6 mb-4">
-                    <div class="section-label mb-4">Rewrite policy</div>
+                    <div class="section-label mb-4" x-text="t('search.section.rewrite_policy')"></div>
                     <label class="block">
-                      <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block">Global rewrite prompt</span>
+                      <span class="text-xs font-semibold text-[var(--imin-text-muted)] mb-1.5 block" x-text="t('search.field.rewrite_label')"></span>
                       <textarea rows="5" x-model="form.rewrite_prompt"
                                 placeholder='Update content where Portugal Golden Visa requires 10 years (not 5) for citizenship eligibility...'
                                 class="edit-textarea" style="font-family: inherit;"></textarea>
-                      <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5">Этот промпт LLM использует для каждого matched-блока. Editor сможет override через Edit & Accept.</div>
+                      <div class="text-xs text-[var(--imin-text-subtle)] mt-1.5" x-text="t('search.field.rewrite_hint_alt')"></div>
                     </label>
                   </div>
 
@@ -953,10 +920,8 @@
                     <label class="flex items-start gap-3 cursor-pointer">
                       <input type="checkbox" x-model="form.dry_run" class="mt-0.5 accent-[var(--imin-navy)] w-4 h-4">
                       <div>
-                        <div class="text-sm font-medium text-[var(--imin-text)]">Dry-run mode</div>
-                        <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">
-                          Прогон без записи в Storyblok (только в campaign_blocks Data Table). Editor затем review'ит и approves'ит. <strong>Default ON</strong> — снимать только после явного подтверждения.
-                        </div>
+                        <div class="text-sm font-medium text-[var(--imin-text)]" x-text="t('search.field.dry_run_label')"></div>
+                        <div class="text-xs text-[var(--imin-text-muted)] mt-0.5" x-html="t('search.field.dry_run_hint_alt')"></div>
                       </div>
                     </label>
                   </div>
@@ -967,16 +932,14 @@
                         <svg class="w-4 h-4 mt-0.5 shrink-0 text-[var(--status-red-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
                         </svg>
-                        <div class="text-sm text-[var(--status-red-fg)]" x-text="'Не удалось запустить: ' + error"></div>
+                        <div class="text-sm text-[var(--status-red-fg)]" x-text="t('search.error_prefix') + error"></div>
                       </div>
                     </div>
                   </template>
 
                   <div class="flex items-center justify-between gap-3">
-                    <button class="btn btn-ghost" @click="goToOverview()">Отмена</button>
-                    <button class="btn btn-primary" :disabled="!canSubmit()" @click="submit()">
-                      Запустить поиск
-                    </button>
+                    <button class="btn btn-ghost" @click="goToOverview()" x-text="t('search.cancel')"></button>
+                    <button class="btn btn-primary" :disabled="!canSubmit()" @click="submit()" x-text="t('search.submit_alt')"></button>
                   </div>
                 </div>
               </template>
@@ -990,12 +953,12 @@
                       <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--imin-navy)] animate-spin"></div>
                     </div>
                     <div>
-                      <div class="font-semibold text-[var(--imin-text)]" x-text="form.campaign_topic || 'Untitled campaign'"></div>
+                      <div class="font-semibold text-[var(--imin-text)]" x-text="form.campaign_topic || t('search.progress.untitled')"></div>
                       <div class="section-label mt-0.5">
-                        <span x-show="progress.stage === 'queued'">Triggering n8n workflow…</span>
-                        <span x-show="progress.stage === 'fetching'">Fetching Storyblok stories…</span>
-                        <span x-show="progress.stage === 'filtering'">LLM context filter…</span>
-                        <span x-show="progress.stage === 'rewriting'">LLM rewrite proposals…</span>
+                        <span x-show="progress.stage === 'queued'" x-text="t('search.progress.queued_label')"></span>
+                        <span x-show="progress.stage === 'fetching'" x-text="t('search.progress.fetching_label')"></span>
+                        <span x-show="progress.stage === 'filtering'" x-text="t('search.progress.filtering_label')"></span>
+                        <span x-show="progress.stage === 'rewriting'" x-text="t('search.progress.rewriting_label')"></span>
                       </div>
                     </div>
                   </div>
@@ -1003,9 +966,7 @@
                   <!-- n8n doesn't stream progress, so just show a friendly
                        "this will take a while" message. -->
                   <div class="space-y-3">
-                    <div class="field-card text-sm text-[var(--imin-text-muted)]">
-                      Запускаем pipeline: mAPI fetch → substring filter → LLM context filter → LLM rewrite. Обычно <strong class="text-[var(--imin-text)]">5–15 минут</strong> для всего blog-tree (~1000 stories), может больше при долгом cold start n8n.
-                    </div>
+                    <div class="field-card text-sm text-[var(--imin-text-muted)]" x-html="t('search.progress.long_note')"></div>
                   </div>
 
                   <template x-if="error">
@@ -1024,23 +985,19 @@
                   </div>
 
                   <div>
-                    <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2">Поиск запущен</h2>
-                    <p class="text-sm text-[var(--imin-text-muted)] mb-5">
-                      Pipeline работает в фоне. Slack-уведомление в <code class="font-mono text-xs bg-[var(--imin-fill)] px-1.5 py-0.5 rounded">#translation-reports</code> когда proposals готовы — это 5–15 минут типично.
-                    </p>
+                    <h2 class="text-xl font-semibold tracking-tight text-[var(--imin-text)] mb-2" x-text="t('search.done.title')"></h2>
+                    <p class="text-sm text-[var(--imin-text-muted)] mb-5" x-html="t('search.done.slack_note')"></p>
                     <div class="field-card max-w-sm mx-auto mb-6 text-left">
-                      <div class="field-label mb-1">campaign_id</div>
+                      <div class="field-label mb-1" x-text="t('search.done.campaign_id_label')"></div>
                       <div class="font-mono text-sm text-[var(--imin-text)] break-all" x-text="queuedCampaignId"></div>
-                      <div class="field-label mt-3 mb-1">queued at</div>
+                      <div class="field-label mt-3 mb-1" x-text="t('search.done.queued_at_label')"></div>
                       <div class="font-mono text-xs text-[var(--imin-text-muted)]" x-text="queuedAt"></div>
                     </div>
                     <div class="flex justify-center gap-2 flex-wrap">
-                      <button class="btn btn-ghost" @click="reset(); goToSearch()">Новая campaign</button>
-                      <a class="btn btn-primary" :href="reviewQueueUrl()">Открыть очередь review →</a>
+                      <button class="btn btn-ghost" @click="reset(); goToSearch()" x-text="t('search.done.new')"></button>
+                      <a class="btn btn-primary" :href="reviewQueueUrl()" x-text="t('search.done.open_review')"></a>
                     </div>
-                    <p class="text-xs text-[var(--imin-text-subtle)] mt-4">
-                      Очередь будет пустой пока pipeline не закончит запись в campaign_blocks. Откроется автоматически когда строки появятся.
-                    </p>
+                    <p class="text-xs text-[var(--imin-text-subtle)] mt-4" x-text="t('search.done.empty_note')"></p>
                   </div>
                 </div>
               </template>
@@ -1051,7 +1008,7 @@
         <!-- Footer with brand -->
         <footer class="max-w-5xl mx-auto px-6 py-8 mt-12 text-center">
           <div class="text-xs text-[var(--imin-text-subtle)]">
-            Mass Actualization · Internal tool · <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="text-[var(--imin-text-muted)] hover:text-[var(--imin-navy)] transition-colors">Immigrant Invest</a>
+            <span x-text="t('footer.tagline')"></span> · <a href="https://immigrantinvest.com/" target="_blank" rel="noopener" class="text-[var(--imin-text-muted)] hover:text-[var(--imin-navy)] transition-colors" x-text="t('header.brand_alt')"></a>
           </div>
         </footer>
       </div>
@@ -1067,52 +1024,52 @@
          @click.self="closePublishModal()">
       <div class="modal-panel max-w-xl" @click.stop>
         <div class="flex items-center justify-between mb-3">
-          <h3 id="publish-modal-title" class="text-lg font-semibold">🚀 Опубликовать кампанию</h3>
+          <h3 id="publish-modal-title" class="text-lg font-semibold" x-text="t('publish.modal.title')"></h3>
           <button type="button"
                   class="text-[var(--imin-text-subtle)] hover:text-[var(--imin-text)] text-2xl leading-none transition-colors"
                   @click="closePublishModal()">&times;</button>
         </div>
 
         <p class="text-sm text-[var(--imin-text-muted)] mb-4">
-          В Storyblok через management API будут запушены <strong x-text="publishableRowCount"></strong> уже принятых/изменённых/удалённых блока.
+          <span x-text="t('publish.modal.intro')"></span><strong x-text="publishableRowCount"></strong><span x-text="t('publish.modal.intro_count')"></span>
           <template x-if="unreviewedRowCount > 0">
-            <span class="text-amber-800"> Ещё <span x-text="unreviewedRowCount"></span> блоков ждут твоего решения — они <strong>не</strong> попадут в этот pуш и останутся видимыми в очереди review.</span>
+            <span class="text-amber-800" x-text="t('publish.modal.intro_unreviewed', { count: unreviewedRowCount })"></span>
           </template>
-          <span class="block mt-2 text-xs">Перевод на другие локали — отдельным шагом (Phase 2B), пока только source-локаль.</span>
+          <span class="block mt-2 text-xs" x-text="t('publish.modal.intro_phase2b_alt')"></span>
         </p>
 
         <template x-if="state && state.campaign">
           <div class="field-card mb-4">
-            <div class="text-xs text-[var(--imin-text-subtle)] uppercase tracking-wider mb-1">Источник</div>
-            <div class="text-sm font-mono" x-text="state.campaign.source_locale + ' (master)'"></div>
-            <div class="text-xs text-[var(--imin-text-subtle)] mt-2">Запись идёт в базовые поля Storyblok без __i18n__ суффикса.</div>
+            <div class="text-xs text-[var(--imin-text-subtle)] uppercase tracking-wider mb-1" x-text="t('publish.modal.source_label_alt')"></div>
+            <div class="text-sm font-mono" x-text="state.campaign.source_locale + t('publish.modal.source_master_suffix')"></div>
+            <div class="text-xs text-[var(--imin-text-subtle)] mt-2" x-text="t('publish.modal.source_hint')"></div>
           </div>
         </template>
 
         <div class="mb-4">
-          <div class="field-label mb-2">Режим</div>
+          <div class="field-label mb-2" x-text="t('publish.modal.mode_label_alt')"></div>
           <div class="space-y-2">
             <label class="flex items-start gap-2.5 p-3 rounded-md border cursor-pointer transition-colors"
                    :class="!publishImmediately ? 'border-emerald-300 bg-emerald-50/40' : 'border-[var(--imin-border)] hover:bg-[var(--imin-bg)]'">
               <input type="radio" name="publish-mode" :value="false" :checked="!publishImmediately" @change="publishImmediately = false" class="mt-0.5 accent-[var(--imin-navy)]">
               <div>
-                <div class="text-sm font-semibold text-[var(--imin-text)]">Draft (рекомендуется)</div>
-                <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">Сохранить как draft в Storyblok. Редактор открывает Storyblok admin, проверяет визуально, публикует руками.</div>
+                <div class="text-sm font-semibold text-[var(--imin-text)]" x-text="t('publish.modal.mode_draft')"></div>
+                <div class="text-xs text-[var(--imin-text-muted)] mt-0.5" x-text="t('publish.modal.mode_draft_hint')"></div>
               </div>
             </label>
             <label class="flex items-start gap-2.5 p-3 rounded-md border cursor-pointer transition-colors"
                    :class="publishImmediately ? 'border-amber-300 bg-amber-50/60' : 'border-[var(--imin-border)] hover:bg-[var(--imin-bg)]'">
               <input type="radio" name="publish-mode" :value="true" :checked="publishImmediately" @change="publishImmediately = true" class="mt-0.5 accent-[var(--imin-navy)]">
               <div>
-                <div class="text-sm font-semibold text-[var(--imin-text)]">⚡ Опубликовать сразу</div>
-                <div class="text-xs text-[var(--imin-text-muted)] mt-0.5">Изменения немедленно становятся live на сайте. Откат возможен через snapshot, но между cascade и rollback зрители увидят новую версию.</div>
+                <div class="text-sm font-semibold text-[var(--imin-text)]" x-text="t('publish.modal.mode_publish')"></div>
+                <div class="text-xs text-[var(--imin-text-muted)] mt-0.5" x-text="t('publish.modal.mode_publish_hint')"></div>
               </div>
             </label>
           </div>
         </div>
 
         <div class="text-xs text-[var(--imin-text-muted)] bg-[var(--imin-bg)] rounded-md p-3 mb-4">
-          <strong>Безопасность:</strong> до cascade'а каждой story сохраняется снапшот её предыдущего состояния. Можно откатить отдельную story или всю кампанию из overview.
+          <strong x-text="t('publish.modal.safety_prefix')"></strong><span x-text="t('publish.modal.safety_body')"></span>
         </div>
 
         <template x-if="publishError">
@@ -1120,12 +1077,12 @@
         </template>
 
         <div class="flex justify-end gap-2">
-          <button class="btn btn-ghost" @click="closePublishModal()" :disabled="publishBusy">Cancel</button>
+          <button class="btn btn-ghost" @click="closePublishModal()" :disabled="publishBusy" x-text="t('common.cancel')"></button>
           <button class="btn"
                   :class="publishImmediately ? 'btn-warning' : 'btn-primary'"
                   @click="confirmPublish()" :disabled="publishBusy">
-            <span x-show="!publishBusy" x-text="publishImmediately ? '⚡ Опубликовать сразу' : 'Сохранить draft'"></span>
-            <span x-show="publishBusy">Запускаем…</span>
+            <span x-show="!publishBusy" x-text="publishImmediately ? t('publish.modal.submit_publish') : t('publish.modal.submit_draft')"></span>
+            <span x-show="publishBusy" x-text="t('publish.modal.submitting')"></span>
           </button>
         </div>
       </div>
@@ -1142,7 +1099,7 @@
          @click.self="helpOpen = false">
       <div class="modal-panel max-w-lg" @click.stop>
         <div class="flex items-center justify-between mb-4">
-          <h3 id="help-modal-title" class="text-lg font-semibold">Keyboard shortcuts</h3>
+          <h3 id="help-modal-title" class="text-lg font-semibold" x-text="t('help.title')"></h3>
           <button type="button"
                   class="text-[var(--imin-text-subtle)] hover:text-[var(--imin-text)] text-2xl leading-none transition-colors"
                   @click="helpOpen = false">&times;</button>
@@ -1150,48 +1107,48 @@
 
         <div class="text-sm space-y-5">
           <div>
-            <div class="section-label mb-2">Story review</div>
+            <div class="section-label mb-2" x-text="t('help.section.story')"></div>
             <table class="w-full">
               <tbody class="divide-y divide-[var(--imin-border)]">
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">j / &darr;</td><td class="py-1.5 text-[var(--imin-text)]">Focus next block</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">k / &uarr;</td><td class="py-1.5 text-[var(--imin-text)]">Focus previous block</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">a / Space</td><td class="py-1.5 text-[var(--imin-text)]">Accept focused block</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Shift+A</td><td class="py-1.5 text-[var(--imin-text)]">Accept all remaining in this story</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">e</td><td class="py-1.5 text-[var(--imin-text)]">Edit & Accept</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">s</td><td class="py-1.5 text-[var(--imin-text)]">Skip focused block</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">d</td><td class="py-1.5 text-[var(--imin-text)]">Delete focused block</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">u</td><td class="py-1.5 text-[var(--imin-text)]">Откатить решение по блоку (undo)</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">n</td><td class="py-1.5 text-[var(--imin-text)]">Save & Next Story</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">b</td><td class="py-1.5 text-[var(--imin-text)]">Back to overview</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Esc</td><td class="py-1.5 text-[var(--imin-text)]">Close modal / cancel edit / unfocus</td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">j / &darr;</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.next_block')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">k / &uarr;</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.prev_block')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">a / Space</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.accept')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Shift+A</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.bulk_accept')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">e</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.edit')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">s</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.skip')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">d</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.delete')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">u</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.undo')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">n</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.next_story')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">b</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.back')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Esc</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.escape')"></td></tr>
               </tbody>
             </table>
           </div>
 
           <div>
-            <div class="section-label mb-2">Overview</div>
+            <div class="section-label mb-2" x-text="t('help.section.overview')"></div>
             <table class="w-full">
               <tbody class="divide-y divide-[var(--imin-border)]">
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">j / &darr;</td><td class="py-1.5 text-[var(--imin-text)]">Focus next story</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">k / &uarr;</td><td class="py-1.5 text-[var(--imin-text)]">Focus previous story</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Enter / o</td><td class="py-1.5 text-[var(--imin-text)]">Open focused story</td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">j / &darr;</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.next_story_o')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">k / &uarr;</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.prev_story')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Enter / o</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.open_story')"></td></tr>
               </tbody>
             </table>
           </div>
 
           <div>
-            <div class="section-label mb-2">Anywhere</div>
+            <div class="section-label mb-2" x-text="t('help.section.anywhere')"></div>
             <table class="w-full">
               <tbody class="divide-y divide-[var(--imin-border)]">
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">? / /</td><td class="py-1.5 text-[var(--imin-text)]">Toggle this help</td></tr>
-                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Esc</td><td class="py-1.5 text-[var(--imin-text)]">Close help overlay</td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">? / /</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.help_toggle')"></td></tr>
+                <tr><td class="py-1.5 pr-3 font-mono text-xs text-[var(--imin-navy)] align-top whitespace-nowrap">Esc</td><td class="py-1.5 text-[var(--imin-text)]" x-text="t('help.shortcut.help_close')"></td></tr>
               </tbody>
             </table>
           </div>
         </div>
 
         <div class="flex justify-end mt-6">
-          <button class="btn btn-primary" @click="helpOpen = false">Close</button>
+          <button class="btn btn-primary" @click="helpOpen = false" x-text="t('common.close')"></button>
         </div>
       </div>
     </div>
@@ -1210,13 +1167,13 @@
          @click="globalError = null">
       <span class="text-lg leading-none">⚠️</span>
       <div class="min-w-0 flex-1">
-        <div class="font-semibold mb-0.5">Ошибка</div>
+        <div class="font-semibold mb-0.5" x-text="t('common.error')"></div>
         <div x-text="globalError"></div>
-        <div class="text-xs opacity-80 mt-1">click to dismiss</div>
+        <div class="text-xs opacity-80 mt-1" x-text="t('common.click_to_dismiss')"></div>
       </div>
     </div>
   </div>
 
-  <script type="module" src="app.js?v=21"></script>
+  <script type="module" src="app.js?v=22"></script>
 </body>
 </html>

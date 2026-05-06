@@ -3,6 +3,7 @@ import { createAPIClient } from './lib/api.js';
 import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, NOT_REVIEWED, REVIEWED } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
 import { nextFocusable, prevFocusable } from './lib/focus.js';
+import { TRANSLATIONS, SUPPORTED_LOCALES, DEFAULT_LOCALE, readStoredLocale, writeStoredLocale, translate, formatDateTime } from './lib/i18n.js';
 
 window.Alpine = Alpine;
 
@@ -120,6 +121,31 @@ window.appRoot = function () {
     screen: 'overview', // 'auth' | 'campaigns' | 'overview' | 'story' | 'done' | 'search'
     currentStoryId: null,
     hasToken: !!CURRENT_TOKEN,
+
+    // ─── i18n ──────────────────────────────────────────────────────────
+    // Reactive locale; templates do `x-text="t('key')"` and re-render when
+    // setLocale() flips it. The t() function reads this.locale to register
+    // an Alpine reactivity dependency.
+    locale: readStoredLocale(),
+    SUPPORTED_LANGS: SUPPORTED_LOCALES,
+    t(key, params) {
+      // Read this.locale FIRST so Alpine tracks the dependency.
+      const loc = this.locale;
+      return translate(TRANSLATIONS, key, loc, params);
+    },
+    fmtDateTime(iso) {
+      const loc = this.locale;
+      return formatDateTime(iso, loc);
+    },
+    setLocale(loc) {
+      if (!SUPPORTED_LOCALES.includes(loc)) return;
+      this.locale = loc;
+      writeStoredLocale(loc);
+    },
+    toggleLocale() {
+      const next = this.locale === 'ru' ? 'en' : 'ru';
+      this.setLocale(next);
+    },
     authForm: { token: '', error: '', saving: false },
     campaigns: [],
     campaignsLoading: false,
@@ -175,14 +201,14 @@ window.appRoot = function () {
       // credential value from n8n (which already includes "Bearer "). The
       // SPA prepends "Bearer " itself when sending the request, so storing
       // it again here would produce "Bearer Bearer ..." and 403.
-      const t = String(this.authForm.token || '').trim().replace(/^bearer\s+/i, '');
-      if (!t) {
-        this.authForm.error = 'Введите токен';
+      const tok = String(this.authForm.token || '').trim().replace(/^bearer\s+/i, '');
+      if (!tok) {
+        this.authForm.error = this.t('auth.empty_token_error');
         return;
       }
       this.authForm.saving = true;
       this.authForm.error = '';
-      writeStoredToken(t);
+      writeStoredToken(tok);
       window.location.reload();
     },
 
@@ -270,7 +296,7 @@ window.appRoot = function () {
       const cid = this.state.campaign.id;
       const cfg = getCampaignConfig(cid);
       if (!cfg) {
-        this.resumeError = 'Не нашёл сохранённый конфиг этой кампании в этом браузере. Запусти новую (форма поиска) с тем же campaign_id.';
+        this.resumeError = this.t('overview.resume.no_config');
         return;
       }
       this.resumeBusy = true;
@@ -285,7 +311,7 @@ window.appRoot = function () {
         try { data = JSON.parse(text); } catch { data = { error: text || `HTTP ${res.status}` }; }
         if (res.status === 401 || res.status === 403) { handleAuthFailure(); return; }
         if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-        this.resumeMessage = `Запущен. Уже обработанные сторис будут пропущены автоматически.`;
+        this.resumeMessage = this.t('overview.resume.message');
         // Refresh once after a beat so the new block.updated_at flips status
         // to "running" without the user having to F5.
         setTimeout(() => { this.refresh().catch(() => {}); }, 2000);
@@ -433,8 +459,8 @@ window.appRoot = function () {
           campaign_id: this.state.campaign.id,
           publish: this.publishImmediately,
         });
-        const mode = this.publishImmediately ? 'опубликован' : 'сохранён как draft';
-        this.publishMessage = `Cascade запущен: контент ${mode}. ${res.queued ? 'Ждём бэк (полминуты-минута).' : ''}`;
+        const tail = res.queued ? this.t('toast.cascade_queued_tail') : '';
+        this.publishMessage = this.t(this.publishImmediately ? 'toast.cascade_started_publish' : 'toast.cascade_started_draft', { tail }).trim();
         this.publishModalOpen = false;
         // Force immediate refresh so the cascade banner appears asap; further
         // updates ride on the existing 8s polling interval.
@@ -451,8 +477,8 @@ window.appRoot = function () {
     async rollbackStory(storyId) {
       if (!this.state || !this.state.campaign) return;
       const ok = confirm(storyId
-        ? `Откатить story ${storyId} в Storyblok к состоянию до публикации?`
-        : `Откатить ВСЮ кампанию в Storyblok к состоянию до публикации? Это затронет все опубликованные stories.`);
+        ? this.t('confirm.rollback_story', { id: storyId })
+        : this.t('confirm.rollback_campaign'));
       if (!ok) return;
       this.publishBusy = true;
       this.publishError = null;
@@ -460,7 +486,7 @@ window.appRoot = function () {
         const payload = { campaign_id: this.state.campaign.id };
         if (storyId) payload.story_id = String(storyId);
         await api.cascadeRollback(payload);
-        this.publishMessage = storyId ? 'Story откачена.' : 'Кампания откачена.';
+        this.publishMessage = this.t(storyId ? 'toast.story_rolled_back' : 'toast.campaign_rolled_back');
         setTimeout(() => { this.refresh().catch(() => {}); }, 3000);
       } catch (e) {
         if (isAuthFailure(e)) { handleAuthFailure(); return; }
@@ -468,6 +494,33 @@ window.appRoot = function () {
       } finally {
         this.publishBusy = false;
       }
+    },
+
+    /** Build the multi-line tooltip for a story's planet emoji. Called from
+     *  the overview template's `:title` binding. Lives in app.js (not inline)
+     *  so the IIFE doesn't shadow the i18n `t` function and so all string
+     *  literals are localised. */
+    translationTooltip(storyId) {
+      const s = this.cascadeStateByStory[storyId];
+      if (!s || !s.translation) return '';
+      const tr = s.translation;
+      const lines = [];
+      lines.push(this.t(tr.published ? 'overview.story.translate.master.published' : 'overview.story.translate.master.draft'));
+      if (tr.source) lines.push(this.t('overview.story.translate.master_label', { locale: tr.source }));
+      if (tr.status === 'triggered' && tr.target_locales && tr.target_locales.length) {
+        lines.push(this.t('overview.story.translate.triggered', { locales: tr.target_locales.join(', ') }));
+        if (tr.triggered_at) lines.push(this.t('overview.story.translate.triggered_at', { time: this.fmtDateTime(tr.triggered_at) }));
+      } else if (tr.status === 'queued') {
+        lines.push(this.t('overview.story.translate.queued'));
+      } else if (tr.status === 'no_targets') {
+        lines.push(this.t('overview.story.translate.no_targets'));
+      } else if (tr.status === 'stale') {
+        lines.push(this.t('overview.story.translate.stale'));
+        lines.push(this.t('overview.story.translate.stale_action'));
+      } else if (tr.status === 'skipped') {
+        lines.push(this.t('overview.story.translate.skipped'));
+      }
+      return lines.join('\n');
     },
 
     /** Trigger / re-trigger translation for one cascaded story. Idempotent:
@@ -481,7 +534,7 @@ window.appRoot = function () {
           campaign_id: this.state.campaign.id,
           story_id: String(storyId),
         });
-        this.publishMessage = 'Перевод триггернут.';
+        this.publishMessage = this.t('toast.translate_triggered');
         setTimeout(() => { this.refresh().catch(() => {}); }, 3000);
       } catch (e) {
         if (isAuthFailure(e)) { handleAuthFailure(); return; }
@@ -497,7 +550,7 @@ window.appRoot = function () {
      *  cascaded or not) are left untouched. */
     async rollbackBlock(rowId) {
       if (!this.state || !this.state.campaign || !rowId) return;
-      const ok = confirm('Откатить этот блок к состоянию до публикации? Остальные блоки story не тронем.');
+      const ok = confirm(this.t('confirm.rollback_block'));
       if (!ok) return;
       this.publishBusy = true;
       this.publishError = null;
@@ -506,7 +559,7 @@ window.appRoot = function () {
           campaign_id: this.state.campaign.id,
           row_id: String(rowId),
         });
-        this.publishMessage = 'Блок откачен.';
+        this.publishMessage = this.t('toast.block_rolled_back');
         setTimeout(() => { this.refresh().catch(() => {}); }, 2000);
       } catch (e) {
         if (isAuthFailure(e)) { handleAuthFailure(); return; }
@@ -643,7 +696,7 @@ window.appRoot = function () {
           handleAuthFailure();
           return;
         }
-        this.globalError = `Действие не сохранилось: ${e.message}. Состояние возвращено.`;
+        this.globalError = this.t('toast.action_failed', { message: e.message });
         await this.refresh();
         throw e;
       }
@@ -1099,6 +1152,13 @@ window.blockCard = function (rowId) {
       if (!b.rolled_back_at) return true;
       return new Date(b.rolled_back_at).getTime() < new Date(b.cascaded_at).getTime();
     },
+    // i18n proxy so per-block templates can do `t('...')` directly. Reads
+    // appRoot.locale through the cached _root reference (which is itself an
+    // Alpine reactive proxy) so locale changes trigger re-render here too.
+    t(key, params) {
+      const root = this._root || getAppRootScope();
+      return root ? root.t(key, params) : key;
+    },
   };
 };
 
@@ -1134,6 +1194,13 @@ window.blockActions = function (rowId) {
       // See blockCard — Alpine 3's $root doesn't climb to appRoot from a child
       // x-data scope. Look up appRoot via the DOM instead.
       this._root = getAppRootScope();
+    },
+
+    // i18n proxy — blockActions templates do `t('...')` and re-render when
+    // appRoot.locale flips (the proxy reads _root.locale, tracked by Alpine).
+    t(key, params) {
+      const root = this._root || getAppRootScope();
+      return root ? root.t(key, params) : key;
     },
 
     /**
@@ -1363,11 +1430,19 @@ window.searchScreen = function () {
       // When opened via "Запустить заново" from a campaign view, the appRoot
       // stashed a prefill object in _resumePrefill. Pull it in once and clear.
       const root = getAppRootScope();
+      this._root = root;
       const prefill = root && root._resumePrefill;
       if (prefill) {
         for (const k of Object.keys(prefill)) this.form[k] = prefill[k];
         if (root) root._resumePrefill = null;
       }
+    },
+
+    // i18n proxy — searchScreen templates call t('...') and re-render when
+    // appRoot.locale flips (proxy reads _root.locale, tracked by Alpine).
+    t(key, params) {
+      const root = this._root || getAppRootScope();
+      return root ? root.t(key, params) : key;
     },
 
     /** Generate a default campaign_id from topic + locale + today, slug-style.

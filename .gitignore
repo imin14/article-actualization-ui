@@ -12,3 +12,4 @@ coverage/
 pipeline/n8n/wf-cascade.workflow.js
 pipeline/n8n/wf-cascade-rollback.workflow.js
 pipeline/n8n/wf-translate.workflow.js
+.claude/
