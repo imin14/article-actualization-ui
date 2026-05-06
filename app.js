@@ -109,6 +109,86 @@ function handleAuthFailure() {
   window.location.reload();
 }
 
+/** Walk a Storyblok story.content tree and return a map block_uid →
+ *  { prev: {uid, component, excerpt}, next: {...} }. "Neighbors" are the
+ *  block's siblings in the same parent array — for a top-level textBlock,
+ *  that's the block before/after; for a deeply-nested table_cell, it's
+ *  cells in the same row. We visit every array of blocks (anything whose
+ *  first item has a _uid + component) and emit neighbor entries. */
+function buildNeighborMap(content) {
+  const out = {};
+  function excerptOf(b) {
+    if (!b || typeof b !== 'object') return '';
+    const pieces = [];
+    function walk(o, depth) {
+      if (!o || depth > 8) return;
+      if (typeof o === 'string') { pieces.push(o); return; }
+      if (Array.isArray(o)) { for (const x of o) walk(x, depth + 1); return; }
+      if (typeof o === 'object') {
+        if (typeof o.text === 'string') pieces.push(o.text);
+        if (typeof o.textMarkdown === 'string') pieces.push(o.textMarkdown);
+        if (typeof o.headline === 'string') pieces.push(o.headline);
+        if (Array.isArray(o.content)) walk(o.content, depth + 1);
+        if (Array.isArray(o.cells)) walk(o.cells, depth + 1);
+        if (Array.isArray(o.body)) walk(o.body, depth + 1);
+      }
+    }
+    walk(b, 0);
+    return pieces.join(' ').replace(/\s+/g, ' ').trim().slice(0, 280);
+  }
+  function visit(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      const blocks = node.filter(x => x && typeof x === 'object' && x._uid && x.component);
+      if (blocks.length > 0) {
+        for (let i = 0; i < blocks.length; i++) {
+          const b = blocks[i];
+          const prev = i > 0 ? blocks[i - 1] : null;
+          const next = i < blocks.length - 1 ? blocks[i + 1] : null;
+          out[b._uid] = {
+            prev: prev ? { uid: prev._uid, component: prev.component, excerpt: excerptOf(prev) } : null,
+            next: next ? { uid: next._uid, component: next.component, excerpt: excerptOf(next) } : null,
+          };
+        }
+      }
+      for (const item of node) visit(item);
+      return;
+    }
+    for (const k of Object.keys(node)) {
+      if (k === '_uid' || k === '_editable' || k === 'component') continue;
+      visit(node[k]);
+    }
+  }
+  visit(content);
+  return out;
+}
+
+/** Extract the first paragraph or text snippet that contains the keyword,
+ *  for use as a Chrome text-fragment URL. Falls back to the first leaf text
+ *  in the block if no field_hits are present. */
+function extractFirstHitExcerpt(block) {
+  if (!block) return '';
+  // Look at proposed_payload (closest to live text) → original_payload.
+  const payload = block.original_payload || block.proposed_payload || {};
+  const pieces = [];
+  function walk(o, depth) {
+    if (!o || depth > 6) return;
+    if (typeof o === 'string') { pieces.push(o); return; }
+    if (Array.isArray(o)) { for (const x of o) walk(x, depth + 1); return; }
+    if (typeof o === 'object') {
+      if (typeof o.text === 'string') pieces.push(o.text);
+      if (typeof o.textMarkdown === 'string') pieces.push(o.textMarkdown);
+      if (typeof o.headline === 'string') pieces.push(o.headline);
+      if (Array.isArray(o.content)) walk(o.content, depth + 1);
+    }
+  }
+  walk(payload, 0);
+  const text = pieces.join(' ').replace(/[*_`#>~\\]+/g, '').replace(/\s+/g, ' ').trim();
+  // Prefer a substring around the first occurrence of the keyword. We don't
+  // know the campaign keyword here, so we just take the first ~80 chars.
+  return text.slice(0, 100);
+}
+
 window.appRoot = function () {
   return {
     loading: true,
@@ -635,6 +715,65 @@ window.appRoot = function () {
       this._loadServerConfig().catch(() => {});
     },
 
+    // Story content cache: story_id → { content, neighbors_by_uid }.
+    // Lazy-loaded when the editor opens a story. neighbors_by_uid maps a
+    // block_uid to { prev: {uid, excerpt, component}, next: {...} } so block
+    // cards can render surrounding-block excerpts inline.
+    storyContentCache: {},
+    _storyContentLoading: {},
+    async loadStoryContent(storyId) {
+      if (!storyId) return null;
+      if (this.storyContentCache[storyId]) return this.storyContentCache[storyId];
+      if (this._storyContentLoading[storyId]) return this._storyContentLoading[storyId];
+      const promise = (async () => {
+        try {
+          const res = await api.getStoryContent(storyId);
+          const content = (res && res.content) || {};
+          const neighbors = buildNeighborMap(content);
+          const entry = { content, neighbors_by_uid: neighbors, full_slug: res && res.full_slug };
+          this.storyContentCache[storyId] = entry;
+          return entry;
+        } catch { return null; }
+        finally { delete this._storyContentLoading[storyId]; }
+      })();
+      this._storyContentLoading[storyId] = promise;
+      return promise;
+    },
+
+    /** Public live URL for a block — opens imin's blog page with a Chrome
+     *  text-fragment scroll-to-and-highlight on the matched paragraph. */
+    blockLiveUrl(block) {
+      if (!block || !block.story_full_slug) return null;
+      const slug = String(block.story_full_slug || '').replace(/^\/+|\/+$/g, '');
+      const base = 'https://immigrantinvest.com/' + slug + '/';
+      const excerpt = extractFirstHitExcerpt(block);
+      if (!excerpt) return base;
+      const enc = encodeURIComponent(excerpt.slice(0, 80)).replace(/'/g, '%27');
+      return base + '#:~:text=' + enc;
+    },
+
+    /** Storyblok admin URL for the story containing this block. Storyblok
+     *  visual editor can't deep-link to a single block, so we open the story. */
+    blockStoryblokUrl(block) {
+      if (!block || !block.story_id) return null;
+      return 'https://app.storyblok.com/#/me/spaces/176292/stories/0/0/' + encodeURIComponent(block.story_id);
+    },
+
+    /** Returns { prev, next } where each is { uid, component, excerpt } or
+     *  null. Excerpts are truncated to ~280 chars for the SPA preview. */
+    blockNeighbors(block) {
+      if (!block || !block.story_id || !block.block_uid) return { prev: null, next: null };
+      const entry = this.storyContentCache[block.story_id];
+      if (!entry) return { prev: null, next: null };
+      return entry.neighbors_by_uid[block.block_uid] || { prev: null, next: null };
+    },
+
+    /** Per-block expanded state for the context panel. row_id → boolean. */
+    contextOpenByRow: {},
+    toggleContext(rowId) {
+      this.contextOpenByRow[rowId] = !this.contextOpenByRow[rowId];
+    },
+
     serverConfig: null,
     _serverConfigLoadedFor: null,
     async _loadServerConfig() {
@@ -1069,13 +1208,17 @@ window.storyScreen = function () {
     bulkAccepting: false,
 
     init() {
-      // Listen for the global keyboard shortcut (Shift+A) so the same logic
-      // runs whether the user clicks the button or presses the key.
       window.addEventListener('story-bulk-accept', () => {
         if (!this.bulkAccepting && this.hasPendingBlocks()) {
           this.bulkAcceptRemaining();
         }
       });
+      // Lazy-load surrounding-block context for this story so each block
+      // card can render prev/next excerpts. Best-effort; failure is silent.
+      const root = getAppRootScope();
+      if (root && root.currentStoryId) {
+        root.loadStoryContent(root.currentStoryId).catch(() => {});
+      }
     },
 
     get group() {

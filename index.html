@@ -547,11 +547,61 @@
                         </div>
 
                         <!-- LLM reasoning -->
-                        <div class="text-xs text-[var(--imin-text-muted)] italic mb-4 flex items-start gap-1.5">
+                        <div class="text-xs text-[var(--imin-text-muted)] italic mb-3 flex items-start gap-1.5">
                           <svg class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--imin-text-subtle)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                           </svg>
                           <span x-text="block.llm_match_reason"></span>
+                        </div>
+
+                        <!-- Per-block context: live link + Storyblok admin link
+                             + collapsible neighbor preview. Helps editor judge
+                             "is this really the 5 we mean?" without leaving SPA. -->
+                        <div class="flex flex-wrap items-center gap-2 mb-3 text-xs">
+                          <a :href="_root.blockLiveUrl(block)" target="_blank" rel="noopener"
+                             class="btn btn-ghost text-xs"
+                             :title="t('block.open_live_title')"
+                             x-text="t('block.open_live')"></a>
+                          <a :href="_root.blockStoryblokUrl(block)" target="_blank" rel="noopener"
+                             class="btn btn-ghost text-xs"
+                             :title="t('block.open_storyblok_title')"
+                             x-text="t('block.open_storyblok')"></a>
+                          <button type="button" class="btn btn-ghost text-xs"
+                                  @click="_root.toggleContext(block.row_id)"
+                                  x-text="_root.contextOpenByRow[block.row_id] ? t('block.context_hide') : t('block.context_show')"></button>
+                        </div>
+
+                        <div x-show="_root.contextOpenByRow[block.row_id]" x-collapse>
+                          <div class="mb-4 rounded-md border border-[var(--imin-border)] bg-[var(--imin-bg)] p-3 space-y-3 text-xs">
+                            <template x-if="!_root.storyContentCache[block.story_id]">
+                              <div class="text-[var(--imin-text-muted)] italic" x-text="t('block.context_loading')"></div>
+                            </template>
+                            <template x-if="_root.storyContentCache[block.story_id]">
+                              <div class="space-y-3">
+                                <template x-if="_root.blockNeighbors(block).prev">
+                                  <div>
+                                    <div class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mb-1">
+                                      <span x-text="t('block.context_prev')"></span>
+                                      · <span x-text="_root.blockNeighbors(block).prev.component"></span>
+                                    </div>
+                                    <div class="text-[var(--imin-text)] whitespace-pre-wrap break-words" x-text="_root.blockNeighbors(block).prev.excerpt"></div>
+                                  </div>
+                                </template>
+                                <template x-if="_root.blockNeighbors(block).next">
+                                  <div>
+                                    <div class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mb-1">
+                                      <span x-text="t('block.context_next')"></span>
+                                      · <span x-text="_root.blockNeighbors(block).next.component"></span>
+                                    </div>
+                                    <div class="text-[var(--imin-text)] whitespace-pre-wrap break-words" x-text="_root.blockNeighbors(block).next.excerpt"></div>
+                                  </div>
+                                </template>
+                                <template x-if="!_root.blockNeighbors(block).prev && !_root.blockNeighbors(block).next">
+                                  <div class="text-[var(--imin-text-muted)] italic" x-text="t('block.context_none')"></div>
+                                </template>
+                              </div>
+                            </template>
+                          </div>
                         </div>
 
                         <!-- Whole-block deletion proposal banner. Shown ABOVE
@@ -1205,6 +1255,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=24"></script>
+  <script type="module" src="app.js?v=25"></script>
 </body>
 </html>
