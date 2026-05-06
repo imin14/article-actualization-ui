@@ -690,13 +690,14 @@
                                  x-text="t('common.error_prefix') + error"></div>
                           </template>
 
-                          <!-- Skip modal -->
+                          <!-- Skip modal — teleported to body to escape per-block stacking context -->
+                          <template x-teleport="body">
                           <div x-show="skipModal"
                                x-transition.opacity
                                role="dialog"
                                aria-modal="true"
                                :aria-labelledby="'skip-modal-title-' + block.row_id"
-                               x-effect="if (skipModal) { $nextTick(() => { const root = document.querySelector('[data-row-id=&quot;' + block.row_id + '&quot;]'); const el = root && root.querySelector('[role=dialog] input, [role=dialog] button, [role=dialog] textarea'); if (el && el.focus) el.focus(); }); }"
+                               x-effect="if (skipModal) { $nextTick(() => { const el = document.querySelector('[role=dialog][aria-labelledby=&quot;skip-modal-title-' + block.row_id + '&quot;] input, [role=dialog][aria-labelledby=&quot;skip-modal-title-' + block.row_id + '&quot;] button, [role=dialog][aria-labelledby=&quot;skip-modal-title-' + block.row_id + '&quot;] textarea'); if (el && el.focus) el.focus(); }); }"
                                class="modal-backdrop"
                                @click.self="closeSkipModal()">
                             <div class="modal-panel" @click.stop>
@@ -723,14 +724,16 @@
                               </div>
                             </div>
                           </div>
+                          </template>
 
-                          <!-- Delete modal -->
+                          <!-- Delete modal — teleported to body -->
+                          <template x-teleport="body">
                           <div x-show="deleteModal"
                                x-transition.opacity
                                role="dialog"
                                aria-modal="true"
                                :aria-labelledby="'delete-modal-title-' + block.row_id"
-                               x-effect="if (deleteModal) { $nextTick(() => { const root = document.querySelector('[data-row-id=&quot;' + block.row_id + '&quot;]'); const el = root && root.querySelector('[role=dialog] button'); if (el && el.focus) el.focus(); }); }"
+                               x-effect="if (deleteModal) { $nextTick(() => { const el = document.querySelector('[role=dialog][aria-labelledby=&quot;delete-modal-title-' + block.row_id + '&quot;] button'); if (el && el.focus) el.focus(); }); }"
                                class="modal-backdrop"
                                @click.self="closeDeleteConfirm()">
                             <div class="modal-panel" @click.stop>
@@ -742,6 +745,7 @@
                               </div>
                             </div>
                           </div>
+                          </template>
                         </div>
                       </li>
                     </template>
@@ -1201,6 +1205,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=23"></script>
+  <script type="module" src="app.js?v=24"></script>
 </body>
 </html>
