@@ -578,6 +578,36 @@
                             </template>
                             <template x-if="_root.storyContentCache[block.story_id]">
                               <div class="space-y-3">
+                                <!-- Section / heading breadcrumb above the block -->
+                                <template x-if="_root.blockNeighbors(block).heading_path && _root.blockNeighbors(block).heading_path.length">
+                                  <div>
+                                    <div class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mb-1" x-text="t('block.context_section')"></div>
+                                    <div class="text-[var(--imin-text)]" x-text="_root.blockNeighbors(block).heading_path.join(' › ')"></div>
+                                  </div>
+                                </template>
+                                <!-- Table cell anchoring: caption + column + row -->
+                                <template x-if="_root.blockNeighbors(block).table_context">
+                                  <div class="rounded border border-[var(--imin-border)] bg-white p-2 space-y-1">
+                                    <template x-if="_root.blockNeighbors(block).table_context.caption">
+                                      <div>
+                                        <span class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mr-1.5" x-text="t('block.context_table_caption')"></span>
+                                        <span class="text-[var(--imin-text)]" x-text="_root.blockNeighbors(block).table_context.caption"></span>
+                                      </div>
+                                    </template>
+                                    <template x-if="_root.blockNeighbors(block).table_context.row_label">
+                                      <div>
+                                        <span class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mr-1.5" x-text="t('block.context_table_row')"></span>
+                                        <span class="font-semibold text-[var(--imin-text)]" x-text="_root.blockNeighbors(block).table_context.row_label"></span>
+                                      </div>
+                                    </template>
+                                    <template x-if="_root.blockNeighbors(block).table_context.column">
+                                      <div>
+                                        <span class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mr-1.5" x-text="t('block.context_table_column')"></span>
+                                        <span class="font-semibold text-[var(--imin-text)]" x-text="_root.blockNeighbors(block).table_context.column"></span>
+                                      </div>
+                                    </template>
+                                  </div>
+                                </template>
                                 <template x-if="_root.blockNeighbors(block).prev && _root.blockNeighbors(block).prev.excerpt">
                                   <div>
                                     <div class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mb-1">
@@ -596,7 +626,7 @@
                                     <div class="text-[var(--imin-text)] whitespace-pre-wrap break-words" x-text="_root.blockNeighbors(block).next.excerpt"></div>
                                   </div>
                                 </template>
-                                <template x-if="!(_root.blockNeighbors(block).prev && _root.blockNeighbors(block).prev.excerpt) && !(_root.blockNeighbors(block).next && _root.blockNeighbors(block).next.excerpt)">
+                                <template x-if="!_root.blockHasContext(block)">
                                   <div class="text-[var(--imin-text-muted)] italic" x-text="t('block.context_none')"></div>
                                 </template>
                               </div>
@@ -1255,6 +1285,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=28"></script>
+  <script type="module" src="app.js?v=29"></script>
 </body>
 </html>

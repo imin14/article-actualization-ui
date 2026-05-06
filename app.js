@@ -117,12 +117,15 @@ function handleAuthFailure() {
  *  first item has a _uid + component) and emit neighbor entries. */
 function buildNeighborMap(content) {
   const out = {};
-  // Generic walker: collects every string leaf except metadata-ish keys and
-  // obvious non-prose values (URLs, asset paths, hex colors, UUIDs, type
-  // names). Fixes the empty-excerpt bug on wrapper components like
-  // `localewrapper` whose children sit under locale keys (`en: [...]`,
-  // `ru: [...]`) — the previous walker only descended into a fixed set of
-  // keys (`content`, `cells`, `body`) and missed those.
+  // For each block we expose three forms of context to the editor:
+  //   1. heading_path: nearest section title(s) above (e.g. "Portugal
+  //      Golden Visa" when matched block is buried inside that section).
+  //   2. table_context: column header + row label when the block sits in
+  //      a table cell. Critical for "5 years"-style cells in comparison
+  //      tables that mean nothing without column/row anchoring.
+  //   3. neighbors: prev/next sibling blocks (walk-up to nearest array
+  //      with > 1 sibling so single-child sections still get useful
+  //      surrounding context).
   function isProseString(s) {
     const t = String(s).trim();
     if (!t) return false;
@@ -154,42 +157,118 @@ function buildNeighborMap(content) {
     walk(b, 0);
     return pieces.join(' ').replace(/\s+/g, ' ').trim().slice(0, 280);
   }
-  // Two-pass: (1) record every block's ancestor-block chain (each entry =
-  // the block-array it sits in + its index within that array). Then (2) for
-  // each block, walk the chain from innermost outward and pick the first
-  // level where the array has > 1 block — those siblings become its
-  // neighbors. This way a textBlock that's the only child of a newSection
-  // still gets useful context (the sibling newSections around its parent).
-  const chains = new Map(); // block_uid → array of {arr, idx}
-  function recordChains(node, chain) {
+  // Each entry in the chain: { arr (parent block-array), idx (position in
+  // arr), parent (the parent BLOCK whose body/content holds this array, or
+  // null if at the root of story.content) }
+  const chains = new Map();
+  function recordChains(node, chain, parentBlock) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
       const blocks = node.filter(x => x && typeof x === 'object' && x._uid && x.component);
       if (blocks.length > 0) {
         for (let i = 0; i < blocks.length; i++) {
           const b = blocks[i];
-          const newChain = chain.concat([{ arr: blocks, idx: i }]);
+          const newChain = chain.concat([{ arr: blocks, idx: i, parent: parentBlock }]);
           chains.set(b._uid, newChain);
-          recordChains(b, newChain);
+          recordChains(b, newChain, b);
         }
-        // Also recurse into non-block children (defensive, rare)
         for (const item of node) {
-          if (!(item && typeof item === 'object' && item._uid && item.component)) recordChains(item, chain);
+          if (!(item && typeof item === 'object' && item._uid && item.component)) recordChains(item, chain, parentBlock);
         }
       } else {
-        for (const item of node) recordChains(item, chain);
+        for (const item of node) recordChains(item, chain, parentBlock);
       }
       return;
     }
     for (const k of Object.keys(node)) {
       if (k === '_uid' || k === '_editable' || k === 'component') continue;
-      recordChains(node[k], chain);
+      recordChains(node[k], chain, parentBlock);
     }
   }
-  recordChains(content, []);
+  recordChains(content, [], null);
+
+  function shortText(s, n) {
+    return String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
+  }
+
+  // Section-title-like fields on Storyblok block components.
+  function blockTitle(b) {
+    if (!b || typeof b !== 'object') return '';
+    return shortText(b.title || b.headline || b.heading || b.name || '', 140);
+  }
+
+  // For a block that sits inside a table_cell (or is one), derive
+  // { column, row_label, caption }. Walks chain to find the table block
+  // (one with `rows` array) and extracts:
+  //   column = first cell of row 0 at the same cell index
+  //   row_label = first cell of the current row
+  //   caption = title/headline of the table block itself or the nearest
+  //             ancestor block with a title
+  function tableContextFor(uid, chain) {
+    if (!chain || chain.length === 0) return null;
+    // Find the deepest ancestor that has a `rows` array, and the cell
+    // index this uid sits under.
+    let tableBlock = null;
+    let rowIdx = -1;
+    let cellIdx = -1;
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const link = chain[i];
+      const cand = link.parent;
+      if (cand && Array.isArray(cand.rows) && cand.rows.length > 0) {
+        tableBlock = cand;
+        // The chain entries between this level and the table tell us row/cell.
+        // Walk forward until we exit the table to find row + cell indexes.
+        for (let j = i; j < chain.length; j++) {
+          const p = chain[j].parent;
+          if (!p) continue;
+          // A row object typically has .cells; the chain hop INTO cells
+          // gives us cellIdx. The hop into rows gives rowIdx.
+          if (Array.isArray(p.cells) && cellIdx < 0) {
+            cellIdx = chain[j].idx;
+            // The block that contains `cells` is the row; find its idx in
+            // the previous link's array.
+            if (j > 0) rowIdx = chain[j - 1].idx;
+          }
+        }
+        break;
+      }
+    }
+    if (!tableBlock) return null;
+    let column = '';
+    let rowLabel = '';
+    if (rowIdx >= 0 && cellIdx >= 0 && tableBlock.rows[0] && Array.isArray(tableBlock.rows[0].cells)) {
+      const headerCell = tableBlock.rows[0].cells[cellIdx];
+      if (headerCell) column = shortText(excerptOf(headerCell), 200);
+    }
+    if (rowIdx >= 0 && tableBlock.rows[rowIdx] && Array.isArray(tableBlock.rows[rowIdx].cells)) {
+      const labelCell = tableBlock.rows[rowIdx].cells[0];
+      if (labelCell) rowLabel = shortText(excerptOf(labelCell), 200);
+    }
+    // Caption: prefer table block's own title; else nearest ancestor with one.
+    let caption = blockTitle(tableBlock);
+    if (!caption) {
+      for (let i = chain.length - 1; i >= 0; i--) {
+        const t = blockTitle(chain[i].parent);
+        if (t) { caption = t; break; }
+      }
+    }
+    if (!column && !rowLabel && !caption) return null;
+    return { column, row_label: rowLabel, caption };
+  }
+
+  // Heading path = section titles of ancestor BLOCKS, outermost first.
+  // E.g. story → "Portugal Golden Visa" → "Pros and cons" → matched block.
+  function headingPathFor(chain) {
+    const path = [];
+    for (const link of chain) {
+      const t = blockTitle(link.parent);
+      if (t) path.push(t);
+    }
+    return path;
+  }
+
   for (const [uid, chain] of chains) {
     let prev = null, next = null;
-    // Walk innermost → outermost; first level with siblings wins.
     for (let i = chain.length - 1; i >= 0; i--) {
       const { arr, idx } = chain[i];
       if (arr.length <= 1) continue;
@@ -200,6 +279,8 @@ function buildNeighborMap(content) {
     out[uid] = {
       prev: prev ? { uid: prev._uid, component: prev.component, excerpt: excerptOf(prev) } : null,
       next: next ? { uid: next._uid, component: next.component, excerpt: excerptOf(next) } : null,
+      heading_path: headingPathFor(chain),
+      table_context: tableContextFor(uid, chain),
     };
   }
   return out;
@@ -823,13 +904,28 @@ window.appRoot = function () {
       return base;
     },
 
-    /** Returns { prev, next } where each is { uid, component, excerpt } or
-     *  null. Excerpts are truncated to ~280 chars for the SPA preview. */
+    /** Returns the full context bundle for a block:
+     *  { prev, next, heading_path, table_context }. Empty defaults if the
+     *  story content isn't loaded yet. */
     blockNeighbors(block) {
-      if (!block || !block.story_id || !block.block_uid) return { prev: null, next: null };
+      if (!block || !block.story_id || !block.block_uid) return { prev: null, next: null, heading_path: [], table_context: null };
       const entry = this.storyContentCache[block.story_id];
-      if (!entry) return { prev: null, next: null };
-      return entry.neighbors_by_uid[block.block_uid] || { prev: null, next: null };
+      if (!entry) return { prev: null, next: null, heading_path: [], table_context: null };
+      const ctx = entry.neighbors_by_uid[block.block_uid];
+      if (!ctx) return { prev: null, next: null, heading_path: [], table_context: null };
+      return ctx;
+    },
+
+    /** Returns true if there is any meaningful context worth showing. Drives
+     *  the empty-state fallback in the context panel. */
+    blockHasContext(block) {
+      const c = this.blockNeighbors(block);
+      if (!c) return false;
+      if (c.heading_path && c.heading_path.length) return true;
+      if (c.table_context && (c.table_context.column || c.table_context.row_label || c.table_context.caption)) return true;
+      if (c.prev && c.prev.excerpt) return true;
+      if (c.next && c.next.excerpt) return true;
+      return false;
     },
 
     /** Per-block expanded state for the context panel. row_id → boolean. */
