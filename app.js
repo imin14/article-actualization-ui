@@ -117,49 +117,91 @@ function handleAuthFailure() {
  *  first item has a _uid + component) and emit neighbor entries. */
 function buildNeighborMap(content) {
   const out = {};
+  // Generic walker: collects every string leaf except metadata-ish keys and
+  // obvious non-prose values (URLs, asset paths, hex colors, UUIDs, type
+  // names). Fixes the empty-excerpt bug on wrapper components like
+  // `localewrapper` whose children sit under locale keys (`en: [...]`,
+  // `ru: [...]`) — the previous walker only descended into a fixed set of
+  // keys (`content`, `cells`, `body`) and missed those.
+  function isProseString(s) {
+    const t = String(s).trim();
+    if (!t) return false;
+    if (t.length < 5) return false;
+    if (/^https?:\/\//i.test(t)) return false;
+    if (/^\/\//.test(t)) return false;
+    if (/\.(jpe?g|png|gif|svg|webp|avif|mp4|webm|pdf|woff2?|ttf|css|js|json)(\?|$)/i.test(t)) return false;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)) return false;
+    if (/^#[0-9a-f]{3,8}$/i.test(t)) return false;
+    if (/^(doc|paragraph|text|bold|italic|underline|link|textStyle|table|table_row|table_cell|heading|bullet_list|list_item|ordered_list|default|primary|secondary|center|left|right|top|bottom|small|medium|large|none|auto)$/i.test(t)) return false;
+    if (/^<!--/.test(t)) return false; // Storyblok meta comments
+    if (/^[\[\{]/.test(t) && /[\]\}]$/.test(t)) return false; // looks like JSON blob
+    return true;
+  }
   function excerptOf(b) {
     if (!b || typeof b !== 'object') return '';
     const pieces = [];
     function walk(o, depth) {
-      if (!o || depth > 8) return;
-      if (typeof o === 'string') { pieces.push(o); return; }
+      if (!o || depth > 12) return;
+      if (typeof o === 'string') { if (isProseString(o)) pieces.push(o); return; }
       if (Array.isArray(o)) { for (const x of o) walk(x, depth + 1); return; }
       if (typeof o === 'object') {
-        if (typeof o.text === 'string') pieces.push(o.text);
-        if (typeof o.textMarkdown === 'string') pieces.push(o.textMarkdown);
-        if (typeof o.headline === 'string') pieces.push(o.headline);
-        if (Array.isArray(o.content)) walk(o.content, depth + 1);
-        if (Array.isArray(o.cells)) walk(o.cells, depth + 1);
-        if (Array.isArray(o.body)) walk(o.body, depth + 1);
+        for (const k of Object.keys(o)) {
+          if (k === '_uid' || k === '_editable' || k === 'component' || k === 'type') continue;
+          walk(o[k], depth + 1);
+        }
       }
     }
     walk(b, 0);
     return pieces.join(' ').replace(/\s+/g, ' ').trim().slice(0, 280);
   }
-  function visit(node) {
+  // Two-pass: (1) record every block's ancestor-block chain (each entry =
+  // the block-array it sits in + its index within that array). Then (2) for
+  // each block, walk the chain from innermost outward and pick the first
+  // level where the array has > 1 block — those siblings become its
+  // neighbors. This way a textBlock that's the only child of a newSection
+  // still gets useful context (the sibling newSections around its parent).
+  const chains = new Map(); // block_uid → array of {arr, idx}
+  function recordChains(node, chain) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
       const blocks = node.filter(x => x && typeof x === 'object' && x._uid && x.component);
       if (blocks.length > 0) {
         for (let i = 0; i < blocks.length; i++) {
           const b = blocks[i];
-          const prev = i > 0 ? blocks[i - 1] : null;
-          const next = i < blocks.length - 1 ? blocks[i + 1] : null;
-          out[b._uid] = {
-            prev: prev ? { uid: prev._uid, component: prev.component, excerpt: excerptOf(prev) } : null,
-            next: next ? { uid: next._uid, component: next.component, excerpt: excerptOf(next) } : null,
-          };
+          const newChain = chain.concat([{ arr: blocks, idx: i }]);
+          chains.set(b._uid, newChain);
+          recordChains(b, newChain);
         }
+        // Also recurse into non-block children (defensive, rare)
+        for (const item of node) {
+          if (!(item && typeof item === 'object' && item._uid && item.component)) recordChains(item, chain);
+        }
+      } else {
+        for (const item of node) recordChains(item, chain);
       }
-      for (const item of node) visit(item);
       return;
     }
     for (const k of Object.keys(node)) {
       if (k === '_uid' || k === '_editable' || k === 'component') continue;
-      visit(node[k]);
+      recordChains(node[k], chain);
     }
   }
-  visit(content);
+  recordChains(content, []);
+  for (const [uid, chain] of chains) {
+    let prev = null, next = null;
+    // Walk innermost → outermost; first level with siblings wins.
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const { arr, idx } = chain[i];
+      if (arr.length <= 1) continue;
+      if (idx > 0) prev = arr[idx - 1];
+      if (idx < arr.length - 1) next = arr[idx + 1];
+      break;
+    }
+    out[uid] = {
+      prev: prev ? { uid: prev._uid, component: prev.component, excerpt: excerptOf(prev) } : null,
+      next: next ? { uid: next._uid, component: next.component, excerpt: excerptOf(next) } : null,
+    };
+  }
   return out;
 }
 
@@ -730,7 +772,7 @@ window.appRoot = function () {
           const res = await api.getStoryContent(storyId);
           const content = (res && res.content) || {};
           const neighbors = buildNeighborMap(content);
-          const entry = { content, neighbors_by_uid: neighbors, full_slug: res && res.full_slug };
+          const entry = { content, neighbors_by_uid: neighbors, full_slug: res && res.full_slug, path: res && res.path };
           this.storyContentCache[storyId] = entry;
           return entry;
         } catch { return null; }
@@ -741,22 +783,44 @@ window.appRoot = function () {
     },
 
     /** Public live URL for a block — opens imin's blog page with a Chrome
-     *  text-fragment scroll-to-and-highlight on the matched paragraph. */
+     *  text-fragment scroll-to-and-highlight on the matched paragraph.
+     *
+     *  URL building priority:
+     *  1. Storyblok `path` field if set on the story (canonical site path)
+     *  2. Heuristic mapping from full_slug:
+     *     - strip leading `immigrantinvest/` (Storyblok folder root, not in URL)
+     *     - rewrite `new-blog/` → `ru/blog/` (RU campaigns)
+     *     - everything else kept as-is (insider/, blog/, etc.)
+     */
     blockLiveUrl(block) {
       if (!block || !block.story_full_slug) return null;
-      const slug = String(block.story_full_slug || '').replace(/^\/+|\/+$/g, '');
-      const base = 'https://immigrantinvest.com/' + slug + '/';
+      const cached = block.story_id ? this.storyContentCache[block.story_id] : null;
+      let publicPath = (cached && cached.path) || null;
+      if (!publicPath) {
+        let s = String(block.story_full_slug || '').replace(/^\/+|\/+$/g, '');
+        if (s.startsWith('immigrantinvest/')) s = s.slice('immigrantinvest/'.length);
+        if (s.startsWith('new-blog/')) s = 'ru/blog/' + s.slice('new-blog/'.length);
+        publicPath = s;
+      } else {
+        publicPath = String(publicPath).replace(/^\/+|\/+$/g, '');
+      }
+      const base = 'https://immigrantinvest.com/' + publicPath + '/';
       const excerpt = extractFirstHitExcerpt(block);
       if (!excerpt) return base;
       const enc = encodeURIComponent(excerpt.slice(0, 80)).replace(/'/g, '%27');
       return base + '#:~:text=' + enc;
     },
 
-    /** Storyblok admin URL for the story containing this block. Storyblok
-     *  visual editor can't deep-link to a single block, so we open the story. */
+    /** Storyblok admin URL for the story. Visual editor doesn't have a
+     *  documented public way to scroll to a specific block, so we open the
+     *  story and pass `_storyblok_c` as a hint (no-op if Storyblok ignores
+     *  it; future-proof if they ever wire it up). Editor still has to
+     *  locate the block visually. */
     blockStoryblokUrl(block) {
       if (!block || !block.story_id) return null;
-      return 'https://app.storyblok.com/#/me/spaces/176292/stories/0/0/' + encodeURIComponent(block.story_id);
+      const base = 'https://app.storyblok.com/#/me/spaces/176292/stories/0/0/' + encodeURIComponent(block.story_id);
+      if (block.block_uid) return base + '?_storyblok_c=' + encodeURIComponent(block.block_uid);
+      return base;
     },
 
     /** Returns { prev, next } where each is { uid, component, excerpt } or

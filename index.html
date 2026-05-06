@@ -578,7 +578,7 @@
                             </template>
                             <template x-if="_root.storyContentCache[block.story_id]">
                               <div class="space-y-3">
-                                <template x-if="_root.blockNeighbors(block).prev">
+                                <template x-if="_root.blockNeighbors(block).prev && _root.blockNeighbors(block).prev.excerpt">
                                   <div>
                                     <div class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mb-1">
                                       <span x-text="t('block.context_prev')"></span>
@@ -587,7 +587,7 @@
                                     <div class="text-[var(--imin-text)] whitespace-pre-wrap break-words" x-text="_root.blockNeighbors(block).prev.excerpt"></div>
                                   </div>
                                 </template>
-                                <template x-if="_root.blockNeighbors(block).next">
+                                <template x-if="_root.blockNeighbors(block).next && _root.blockNeighbors(block).next.excerpt">
                                   <div>
                                     <div class="font-mono text-[10px] uppercase tracking-wider text-[var(--imin-text-subtle)] mb-1">
                                       <span x-text="t('block.context_next')"></span>
@@ -596,7 +596,7 @@
                                     <div class="text-[var(--imin-text)] whitespace-pre-wrap break-words" x-text="_root.blockNeighbors(block).next.excerpt"></div>
                                   </div>
                                 </template>
-                                <template x-if="!_root.blockNeighbors(block).prev && !_root.blockNeighbors(block).next">
+                                <template x-if="!(_root.blockNeighbors(block).prev && _root.blockNeighbors(block).prev.excerpt) && !(_root.blockNeighbors(block).next && _root.blockNeighbors(block).next.excerpt)">
                                   <div class="text-[var(--imin-text-muted)] italic" x-text="t('block.context_none')"></div>
                                 </template>
                               </div>
@@ -1255,6 +1255,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=25"></script>
+  <script type="module" src="app.js?v=28"></script>
 </body>
 </html>
