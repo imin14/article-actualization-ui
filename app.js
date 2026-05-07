@@ -1504,6 +1504,14 @@ window.blockCard = function (rowId) {
     },
     getByPath(obj, path) {
       if (!obj || !path) return null;
+      // edited_payload is saved by blockCard.onAcceptEdited as a flat
+      // dotted-key map ({ "content.content.0.content.0.text": "..." }),
+      // not a nested tree. Try the flat lookup first; only fall back to
+      // nested walk for original/proposed payloads which ARE nested.
+      // Without this, hasChanges() and the diff renderer can't see the
+      // editor's saved text and the UI keeps displaying the LLM's proposed
+      // version even though the row's status is 'edited'.
+      if (Object.prototype.hasOwnProperty.call(obj, path)) return obj[path];
       const segs = String(path).split('.');
       let cur = obj;
       for (const seg of segs) {
@@ -1660,8 +1668,13 @@ window.blockActions = function (rowId) {
       const root = getAppRootScope();
       const drill = (obj, path) => root && typeof root.getByPath === 'function' ? root.getByPath(obj, path) : null;
       // Fallback drill for environments where appRoot isn't ready yet.
+      // Mirrors the flat-then-nested logic in appRoot.getByPath so a
+      // re-opened edit form pre-fills with the editor's previously saved
+      // text (stored as flat dotted-key map) rather than the LLM's
+      // proposed value.
       const localDrill = (obj, path) => {
         if (!obj || !path) return null;
+        if (Object.prototype.hasOwnProperty.call(obj, path)) return obj[path];
         const segs = String(path).split('.');
         let cur = obj;
         for (const seg of segs) {
