@@ -1918,6 +1918,22 @@ window.searchScreen = function () {
 
     async _realSubmit() {
       this.progress.stage = 'queued';
+      // Pre-flight lock check: refuse to submit if the campaign was active
+      // in the last 90 seconds (very likely another search is mid-flight).
+      // Catches double-submits across tabs / refreshes; the search workflow
+      // self-chains via Self-Trigger Next Batch and two parallel chains
+      // duplicate every row they both touch. Best-effort — checkSearchLock
+      // failures other than 409 are swallowed so a transient 5xx can't
+      // block a legit search.
+      const cidForLock = this.form.campaign_id || this.suggestedCampaignId();
+      try {
+        await api.checkSearchLock(cidForLock);
+      } catch (e) {
+        if (e && e.status === 409) {
+          const ageSec = e.payload && e.payload.last_activity_age_seconds;
+          throw new Error(`Поиск этой кампании уже выполняется (последняя активность ${ageSec ?? '?'}s назад). Подожди пока текущий проход закончит и попробуй ещё раз.`);
+        }
+      }
       const url = `${API_BASE_URL}/webhook/search-trigger`;
       const ctrl = new AbortController();
       const timeoutId = setTimeout(() => ctrl.abort(), 30000);
