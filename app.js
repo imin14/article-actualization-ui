@@ -476,7 +476,14 @@ window.appRoot = function () {
           delete all[cid];
           localStorage.setItem(CAMPAIGN_CONFIGS_KEY, JSON.stringify(all));
         } catch {}
-        delete this.storyContentCache[cid];
+
+        // The storyContentCache is keyed by story_id, not campaign_id.
+        // If we're deleting the current campaign, we can clear the whole cache
+        // as it's the safest way to ensure no stale data remains.
+        if (this.state && this.state.campaign && this.state.campaign.id === cid) {
+          this.storyContentCache = {};
+        }
+
         this.closeDeleteCampaign();
         await this.loadCampaigns();
       } catch (e) {
@@ -1854,7 +1861,17 @@ window.searchScreen = function () {
      *  otherwise reusing the same campaign_id between locales causes the
      *  workflow's existing-rows lookup to mix data across locales. */
     suggestedCampaignId() {
-      const topic = (this.form.campaign_topic || '').toLowerCase();
+      let topic = (this.form.campaign_topic || '').toLowerCase();
+
+      // Simple transliteration for common Cyrillic chars so slugs stay readable
+      // even for RU campaigns.
+      const ru = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';
+      const en = 'abvgdeezzijklmnoprstufhzcss_y_eya';
+      topic = topic.split('').map(char => {
+        const i = ru.indexOf(char);
+        return i >= 0 ? en[i] : char;
+      }).join('');
+
       const slug = topic
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
