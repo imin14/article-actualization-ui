@@ -1,6 +1,6 @@
 import Alpine from 'alpinejs';
 import { createAPIClient } from './lib/api.js';
-import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, NOT_REVIEWED, REVIEWED } from './lib/state.js';
+import { groupByStory, computeProgress, applyAction, getNextPendingStory, getPendingBlocksInStory, campaignStatus as computeCampaignStatus, NOT_REVIEWED, REVIEWED } from './lib/state.js';
 import { renderDiffHTML } from './lib/diff.js';
 import { nextFocusable, prevFocusable } from './lib/focus.js';
 import { TRANSLATIONS, SUPPORTED_LOCALES, DEFAULT_LOCALE, readStoredLocale, writeStoredLocale, translate, formatDateTime } from './lib/i18n.js';
@@ -844,23 +844,9 @@ window.appRoot = function () {
       }
     },
 
-    /**
-     * Heuristic status label for a campaign card.
-     * - "running" if any block is still pending AND the row was updated
-     *   within the last 2 minutes (search workflow likely still inserting)
-     * - "ready"   if every block is non-pending (review complete)
-     * - "review"  otherwise (some pending, but search appears done)
-     */
+    /** Status label for a campaign card. Logic + tests live in lib/state.js. */
     campaignStatus(c) {
-      const total = c.total || 0;
-      const pending = (c.by_status && c.by_status.pending) || 0;
-      const reviewed = total - pending;
-      if (total === 0) return { label: 'empty', tone: 'neutral' };
-      if (pending === 0) return { label: 'ready', tone: 'success' };
-      const last = c.last_updated_at ? Date.parse(c.last_updated_at) : 0;
-      const ageMs = Date.now() - last;
-      if (last && ageMs < 2 * 60 * 1000) return { label: 'running', tone: 'warning' };
-      return { label: `${reviewed}/${total}`, tone: 'progress' };
+      return computeCampaignStatus(c);
     },
 
     async refresh() {
